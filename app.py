@@ -1,25 +1,31 @@
 import os
 import traceback
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 import google.generativeai as genai
 
 app = FastAPI()
 
-# Configurar API Key de Gemini desde variables de entorno
+# Configurar CORS para permitir peticiones desde la web/app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Configurar API Key de Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Modelo de Gemini listo para producción
+# Configurar Modelo Gemini
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial. Respondés siempre con tono natural de Argentina."
 )
-
-class ChatMessage(BaseModel):
-    message: str
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -28,13 +34,24 @@ async def serve_index():
     return "<h1>Servidor Nico IA activo</h1>"
 
 @app.post("/api/chat")
-async def chat_endpoint(data: ChatMessage):
+async def chat_endpoint(request: Request):
     try:
         if not GEMINI_API_KEY:
             raise ValueError("No se encontró la GEMINI_API_KEY en las variables de entorno.")
         
-        response = model.generate_content(data.message)
-        return {"response": response.text}
+        # Recibir los datos JSON enviados por el frontend
+        data = await request.json()
+        
+        # Buscar el texto del mensaje dentro de cualquier nombre común que use index.html
+        user_text = data.get("message") or data.get("prompt") or data.get("text") or data.get("user_message") or ""
+        
+        if not user_text:
+            return {"response": "No recibí ningún mensaje de texto."}
+
+        # Generar respuesta con Gemini
+        response = model.generate_content(user_text)
+        return {"response": response.text, "reply": response.text}
+
     except Exception as e:
         print("--- ERROR EN GENERATE_CONTENT ---")
         traceback.print_exc()
