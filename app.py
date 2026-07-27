@@ -2,7 +2,6 @@ import os
 import traceback
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import google.generativeai as genai
 
