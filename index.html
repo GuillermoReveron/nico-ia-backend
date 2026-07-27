@@ -5,370 +5,114 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nico IA</title>
     <style>
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        body {
-            background-color: #121212;
-            color: #ffffff;
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            overflow: hidden;
-        }
-        header {
-            padding: 15px;
-            background-color: #1e1e1e;
-            text-align: center;
-            font-weight: bold;
-            font-size: 1.2rem;
-            border-bottom: 1px solid #333;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        #chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-        .message {
-            max-width: 85%;
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 0.95rem;
-            line-height: 1.4;
-            word-wrap: break-word;
-        }
-        .user-message {
-            align-self: flex-end;
-            background-color: #2b5278;
-            color: #ffffff;
-        }
-        .bot-message {
-            align-self: flex-start;
-            background-color: #262626;
-            color: #e0e0e0;
-            border: 1px solid #333;
-        }
-        #preview-container {
-            padding: 8px 15px;
-            background: #181818;
-            display: flex;
-            gap: 10px;
-            overflow-x: auto;
-        }
-        .preview-item {
-            position: relative;
-            display: inline-block;
-        }
-        .preview-item img {
-            height: 60px;
-            border-radius: 6px;
-        }
-        #controls {
-            padding: 12px;
-            background-color: #1e1e1e;
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            border-top: 1px solid #333;
-        }
-        input[type="text"] {
-            flex: 1;
-            padding: 12px;
-            border-radius: 20px;
-            border: 1px solid #444;
-            background-color: #2a2a2a;
-            color: white;
-            outline: none;
-            font-size: 0.95rem;
-        }
-        .btn {
-            background-color: #3a3a3a;
-            color: white;
-            border: none;
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            cursor: pointer;
-            font-size: 1.2rem;
-            transition: background 0.2s;
-        }
-        .btn:active {
-            background-color: #555;
-        }
-        #send-btn {
-            background-color: #0084ff;
-        }
-        #camera-modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: rgba(0,0,0,0.95);
-            z-index: 1000;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-        }
-        #video-feed {
-            width: 90%;
-            max-width: 500px;
-            border-radius: 12px;
-            background: #000;
-        }
-        .cam-controls {
-            margin-top: 20px;
-            display: flex;
-            gap: 20px;
-        }
-        .btn-cam {
-            padding: 12px 24px;
-            border-radius: 25px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        #snap-btn { background: #28a745; color: white; }
-        #close-cam-btn { background: #dc3545; color: white; }
-        input[type="file"] {
-            display: none;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #121212; color: #e0e0e0; display: flex; flex-direction: column; height: 100vh; }
+        header { background-color: #1f1f1f; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
+        h1 { font-size: 1.2rem; color: #fff; }
+        .voice-btn { background-color: #2e7d32; color: white; border: none; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-size: 0.9rem; }
+        #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .message { max-width: 80%; padding: 12px 16px; border-radius: 18px; line-height: 1.4; word-wrap: break-word; }
+        .user-message { background-color: #1565c0; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .bot-message { background-color: #2a2a2a; color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #3d3d3d; }
+        #input-container { background-color: #1f1f1f; padding: 15px; display: flex; gap: 10px; align-items: center; border-top: 1px solid #333; }
+        input[type="text"] { flex: 1; background-color: #2a2a2a; border: 1px solid #3d3d3d; color: white; padding: 12px 18px; border-radius: 25px; outline: none; font-size: 1rem; }
+        .icon-btn { background: #2a2a2a; border: 1px solid #3d3d3d; color: white; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; }
+        .send-btn { background-color: #0084ff; border: none; color: white; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; }
     </style>
 </head>
 <body>
-
     <header>
-        <span>Nico IA</span>
-        <button id="voice-toggle" class="btn" title="Activar/Desactivar Voz" style="width: auto; height: auto; border-radius: 8px; padding: 4px 8px; font-size: 0.8rem; background: #28a745;">🔊 Voz ON</button>
+        <h1>Nico IA</h1>
+        <button class="voice-btn" id="toggle-voice" onclick="toggleVoice()">🔊 Voz ON</button>
     </header>
 
     <div id="chat-container">
-        <div class="message bot-message">¡Buenas! Soy Nico IA. Podés hablarme por micrófono, mostrarme cosas con la cámara o adjuntarme archivos y PDFs. ¿En qué laburamos hoy?</div>
+        <div class="message bot-message">¡Buenas! Soy Nico IA. Podés hablarme por micrófono o escribirme. ¿En qué laburamos hoy?</div>
     </div>
 
-    <div id="preview-container"></div>
-
-    <div id="controls">
-        <button class="btn" onclick="document.getElementById('file-input').click()" title="Adjuntar Archivos">📎</button>
-        <input type="file" id="file-input" accept="image/*,application/pdf,.doc,.docx,.txt" multiple onchange="handleFiles(this.files)">
-
-        <button class="btn" onclick="openCamera()" title="Tomar Foto">📷</button>
-
-        <button class="btn" id="mic-btn" onclick="toggleSpeechRecognition()" title="Hablar">🎙️</button>
-
-        <input type="text" id="user-input" placeholder="Escribí o hablá..." onkeypress="if(event.key==='Enter') sendMessage()">
-
-        <button class="btn" id="send-btn" onclick="sendMessage()">➤</button>
-    </div>
-
-    <div id="camera-modal">
-        <video id="video-feed" autoplay playsinline></video>
-        <div class="cam-controls">
-            <button class="btn-cam" id="snap-btn" onclick="takeSnapshot()">📸 Capturar Foto</button>
-            <button class="btn-cam" id="close-cam-btn" onclick="closeCamera()">❌ Cerrar</button>
-        </div>
-        <canvas id="canvas" style="display:none;"></canvas>
+    <div id="input-container">
+        <button class="icon-btn" onclick="startMic()">🎙️</button>
+        <input type="text" id="user-input" placeholder="Escribí o hablá..." onkeypress="handleKeyPress(event)">
+        <button class="send-btn" onclick="sendMessage()">➤</button>
     </div>
 
     <script>
-        let ttsEnabled = true;
-        let selectedFiles = [];
-        let mediaStream = null;
-        let recognition = null;
-        let isListening = false;
+        let voiceEnabled = true;
 
-        document.getElementById('voice-toggle').addEventListener('click', function() {
-            ttsEnabled = !ttsEnabled;
-            this.textContent = ttsEnabled ? "🔊 Voz ON" : "🔇 Voz OFF";
-            this.style.background = ttsEnabled ? "#28a745" : "#6c757d";
-            if (!ttsEnabled) window.speechSynthesis.cancel();
-        });
-
-        // Configuración de Reconocimiento de Voz
-        function initSpeech() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                recognition = new SpeechRecognition();
-                recognition.lang = 'es-AR';
-                recognition.continuous = false;
-                recognition.interimResults = false;
-
-                recognition.onresult = function(event) {
-                    const text = event.results[0][0].transcript;
-                    document.getElementById('user-input').value = text;
-                    stopListening();
-                    sendMessage();
-                };
-
-                recognition.onerror = function() { stopListening(); };
-                recognition.onend = function() { stopListening(); };
-            }
-        }
-        initSpeech();
-
-        function toggleSpeechRecognition() {
-            if (!recognition) initSpeech();
-            if (!recognition) {
-                alert("El micrófono no está disponible.");
-                return;
-            }
-            if (isListening) {
-                recognition.stop();
-                stopListening();
-            } else {
-                try {
-                    window.speechSynthesis.cancel();
-                    recognition.start();
-                    isListening = true;
-                    document.getElementById('mic-btn').style.background = '#dc3545';
-                } catch(err) {
-                    stopListening();
-                }
-            }
+        function toggleVoice() {
+            voiceEnabled = !voiceEnabled;
+            const btn = document.getElementById('toggle-voice');
+            btn.textContent = voiceEnabled ? '🔊 Voz ON' : '🔇 Voz OFF';
+            btn.style.backgroundColor = voiceEnabled ? '#2e7d32' : '#c62828';
         }
 
-        function stopListening() {
-            isListening = false;
-            document.getElementById('mic-btn').style.background = '#3a3a3a';
-        }
-
-        // Síntesis de Voz configurada para Español de Argentina (es-AR)
-        function speakText(text) {
-            if (!ttsEnabled || !('speechSynthesis' in window)) return;
+        function speak(text) {
+            if (!voiceEnabled || !('speechSynthesis' in window)) return;
             window.speechSynthesis.cancel();
-
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'es-AR';
             utterance.rate = 1.0;
-            
-            // Forzar búsqueda de voz en español rioplatense/latino
-            const voices = window.speechSynthesis.getVoices();
-            const arVoice = voices.find(v => v.lang === 'es-AR') || 
-                            voices.find(v => v.lang.includes('es-419')) || 
-                            voices.find(v => v.lang.includes('es'));
-            if (arVoice) utterance.voice = arVoice;
-
             window.speechSynthesis.speak(utterance);
         }
 
-        async function openCamera() {
-            const modal = document.getElementById('camera-modal');
-            const video = document.getElementById('video-feed');
-            try {
-                mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-                video.srcObject = mediaStream;
-                modal.style.display = 'flex';
-            } catch (err) {
-                alert("No se pudo acceder a la cámara: " + err.message);
-            }
-        }
-
-        function closeCamera() {
-            if (mediaStream) {
-                mediaStream.getTracks().forEach(track => track.stop());
-            }
-            document.getElementById('camera-modal').style.display = 'none';
-        }
-
-        function takeSnapshot() {
-            const video = document.getElementById('video-feed');
-            const canvas = document.getElementById('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            canvas.toBlob(blob => {
-                const file = new File([blob], "foto_camara.jpg", { type: "image/jpeg" });
-                handleFiles([file]);
-                closeCamera();
-            }, 'image/jpeg');
-        }
-
-        function handleFiles(files) {
-            const previewContainer = document.getElementById('preview-container');
-            for (let file of files) {
-                selectedFiles.push(file);
-                const item = document.createElement('div');
-                item.className = 'preview-item';
-                
-                if (file.type.startsWith('image/')) {
-                    const img = document.createElement('img');
-                    img.src = URL.createObjectURL(file);
-                    item.appendChild(img);
-                } else {
-                    item.innerHTML = `<span style="background:#333; padding:5px 10px; border-radius:5px; font-size:0.8rem;">📄 ${file.name}</span>`;
-                }
-                previewContainer.appendChild(item);
-            }
+        function appendMessage(text, isUser) {
+            const container = document.getElementById('chat-container');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            msgDiv.textContent = text;
+            container.appendChild(msgDiv);
+            container.scrollTop = container.scrollHeight;
         }
 
         async function sendMessage() {
             const input = document.getElementById('user-input');
-            const message = input.value.trim();
+            const text = input.value.trim();
+            if (!text) return;
 
-            if (!message && selectedFiles.length === 0) return;
-
-            if (message) appendMessage(message, 'user-message');
+            appendMessage(text, true);
             input.value = '';
 
-            const previewContainer = document.getElementById('preview-container');
-            previewContainer.innerHTML = '';
-
-            const loadingId = 'loading-' + Date.now();
-            appendMessage("Pensando...", 'bot-message', loadingId);
-
             try {
-                const formData = new FormData();
-                formData.append('prompt', message);
-                selectedFiles.forEach((file, i) => formData.append(`file_${i}`, file));
-
-                // Petición a la ruta de la API
+                // Petición relativa directa a Render
                 const response = await fetch('/api/chat', {
                     method: 'POST',
-                    body: formData
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
                 });
 
-                if (!response.ok) throw new Error("HTTP " + response.status);
+                if (!response.ok) throw new Error('Error en la respuesta del servidor');
 
                 const data = await response.json();
-                document.getElementById(loadingId)?.remove();
-
-                const botResponse = data.response || "No recibí respuesta de Nico.";
-                appendMessage(botResponse, 'bot-message');
-                speakText(botResponse);
+                const replyText = data.response || data.reply || 'Sin respuesta';
+                
+                appendMessage(replyText, false);
+                speak(replyText);
 
             } catch (error) {
-                document.getElementById(loadingId)?.remove();
-                const errorMsg = "Error de conexión con Nico IA. Por favor reintentá.";
-                appendMessage(errorMsg, 'bot-message');
-                speakText(errorMsg);
+                console.error(error);
+                appendMessage('Error de conexión con Nico IA. Por favor reintentá.', false);
             }
-
-            selectedFiles = [];
         }
 
-        function appendMessage(text, className, id = null) {
-            const container = document.getElementById('chat-container');
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `message ${className}`;
-            if (id) msgDiv.id = id;
-            msgDiv.textContent = text;
-            container.appendChild(msgDiv);
-            container.scrollTop = container.scrollHeight;
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function startMic() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                alert('Tu navegador no soporta reconocimiento de voz.');
+                return;
+            }
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'es-AR';
+            recognition.start();
+
+            recognition.onresult = function(event) {
+                const text = event.results[0][0].transcript;
+                document.getElementById('user-input').value = text;
+                sendMessage();
+            };
         }
     </script>
 </body>
