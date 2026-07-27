@@ -7,7 +7,6 @@ import google.generativeai as genai
 
 app = FastAPI()
 
-# Configurar CORS para permitir peticiones desde la web/app
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,12 +15,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configurar API Key de Gemini
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Configurar Modelo Gemini
 model = genai.GenerativeModel(
     model_name="gemini-1.5-flash",
     system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial. Respondés siempre con tono natural de Argentina."
@@ -39,18 +36,14 @@ async def chat_endpoint(request: Request):
         if not GEMINI_API_KEY:
             raise ValueError("No se encontró la GEMINI_API_KEY en las variables de entorno.")
         
-        # Recibir los datos JSON enviados por el frontend
         data = await request.json()
-        
-        # Buscar el texto del mensaje dentro de cualquier nombre común que use index.html
-        user_text = data.get("message") or data.get("prompt") or data.get("text") or data.get("user_message") or ""
+        user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
         
         if not user_text:
             return {"response": "No recibí ningún mensaje de texto."}
 
-        # Generar respuesta con Gemini
         response = model.generate_content(user_text)
-        return {"response": response.text, "reply": response.text}
+        return {"response": response.text}
 
     except Exception as e:
         print("--- ERROR EN GENERATE_CONTENT ---")
