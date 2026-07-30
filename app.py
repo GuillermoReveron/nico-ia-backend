@@ -33,7 +33,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-# Voz argentina masculina joven
+# Voz argentina masculina joven (+10% velocidad)
 async def generate_voice_male(text: str) -> str:
     clean_text = text.replace("*", "").replace("#", "").replace("!", "").strip()
     if not clean_text:
@@ -92,63 +92,24 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# Diccionario de coordenadas para ciudades frecuentes + geocodificación global
-KNOWN_CITIES = {
-    "tres arroyos": (-38.37, -60.27, "Tres Arroyos"),
-    "benito juarez": (-37.67, -59.80, "Benito Juárez"),
-    "las flores": (-36.01, -59.10, "Las Flores"),
-    "la plata": (-34.92, -57.95, "La Plata"),
-    "balcarce": (-37.84, -58.25, "Balcarce"),
-    "tandil": (-37.32, -59.13, "Tandil"),
-    "azul": (-36.77, -59.85, "Azul"),
-    "olavarria": (-36.89, -60.32, "Olavarría"),
-    "mar del plata": (-38.00, -57.55, "Mar del Plata"),
-    "bahia blanca": (-38.71, -62.26, "Bahía Blanca"),
-    "necochea": (-38.55, -58.73, "Necochea"),
-    "buenos aires": (-34.60, -58.38, "Buenos Aires"),
-    "cordoba": (-31.42, -64.18, "Córdoba"),
-    "mendoza": (-32.89, -68.84, "Mendoza"),
-    "rosario": (-32.95, -60.64, "Rosario")
-}
-
-def get_weather_global(user_text: str, default_location: str) -> str:
+# BÚSQUEDA METEOROLÓGICA EXACTA VÍA TAVILY (Lee reportes oficiales en vivo)
+def get_weather_exact(user_text: str, default_location: str) -> str:
     try:
-        clean_text = user_text.lower().replace("?", "").replace("¿", "").replace(".", "").replace(",", "")
-        
-        lat, lon, city_name = None, None, None
-        for city_key, data in KNOWN_CITIES.items():
-            if city_key in clean_text:
-                lat, lon, city_name = data[0], data[1], data[2]
-                break
+        match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
+        city_query = match.group(1).strip().replace("?", "").replace("¿", "").replace(".", "") if match else default_location.split(",")[0]
 
-        if not lat:
-            match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
-            city_query = match.group(1).strip().replace("?", "").replace("¿", "") if match else default_location.split(",")[0]
+        if tavily_client:
+            search_query = f"clima pronostico temperatura mañana {city_query} Servicio Meteorologico Nacional Argentina"
+            search_result = tavily_client.search(query=search_query, max_results=2, search_depth="basic")
+            results = search_result.get("results", [])
             
-            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(city_query)}&count=5&language=es&format=json"
-            geo_res = requests.get(geo_url, timeout=5)
-            
-            if geo_res.status_code == 200 and geo_res.json().get("results"):
-                results = geo_res.json()["results"]
-                arg_result = next((r for r in results if r.get("country_code") == "AR"), results[0])
-                lat = arg_result.get("latitude")
-                lon = arg_result.get("longitude")
-                city_name = arg_result.get("name", city_query)
-
-        if not lat:
-            lat, lon, city_name = -37.67, -59.80, "Benito Juárez"
-
-        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto"
-        w_res = requests.get(weather_url, timeout=5)
-        
-        if w_res.status_code == 200:
-            daily = w_res.json().get("daily", {})
-            max_temp = daily.get("temperature_2m_max", [None, None])[1]
-            min_temp = daily.get("temperature_2m_min", [None, None])[1]
-            rain = daily.get("precipitation_probability_max", [None, None])[1]
-            return f"DATOS METEOROLÓGICOS REALES PARA MAÑANA EN {city_name.upper()}: Máxima {max_temp}°C, Mínima {min_temp}°C, Lluvia {rain}%."
+            if results:
+                context_clima = f"DATOS REALES DEL TIEMPO OBTENIDOS EN TIEMPO REAL PARA {city_query.upper()}:\n"
+                for res in results:
+                    context_clima += f"- {res.get('title')}: {res.get('content')}\n"
+                return context_clima
     except Exception as e:
-        print("Error en clima global:", e)
+        print("Error buscando clima exacto con Tavily:", e)
     return ""
 
 # Creador de PDF con formato limpio de paginado
@@ -256,15 +217,15 @@ async def chat_endpoint(request: Request):
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. CLIMA
+        # 4. CLIMA EXACTO CON BÚSQUEDA WEB
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
 
         if is_weather:
-            global_weather = get_weather_global(user_text, user_location)
-            if global_weather:
-                context_web = f"\n\nINFORMACIÓN METEOROLÓGICA EN TIEMPO REAL OBTENIDA:\n{global_weather}\n"
+            exact_weather = get_weather_exact(user_text, user_location)
+            if exact_weather:
+                context_web = f"\n\n{exact_weather}\n"
 
         if not context_web and tavily_client and len(user_text.strip()) > 3:
             try:
@@ -282,9 +243,10 @@ async def chat_endpoint(request: Request):
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             "Estamos en el año 2026. "
-            "Mantené la lógica estricta del diálogo. Respondé ÚNICAMENTE sobre la ciudad consultada por el usuario utilizando los datos del prompt. NUNCA menciones a Benito Juárez a menos que la consulta sea sobre esa ciudad. "
+            "Mantené la lógica estricta del diálogo. Si en el prompt recibís los datos del clima de una ciudad, responde con los datos meteorológicos exactos que leíste en los resultados de la web. "
+            "Respondé ÚNICAMENTE sobre la ciudad consultada. "
             "Si el usuario te pide un resumen de un documento o texto, explicáselo detalladamente en puntos clave. "
-            "Si pide un PDF o informe para estudiar, confirmale que se lo dejaste listo para descargar con el botón inferior. NO usás la palabra 'che'."
+            "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar con el botón inferior. NO usás la palabra 'che'."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
@@ -307,7 +269,7 @@ async def chat_endpoint(request: Request):
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
             "max_tokens": 500,
-            "temperature": 0.4
+            "temperature": 0.3
         }
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
