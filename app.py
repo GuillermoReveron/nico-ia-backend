@@ -1,13 +1,12 @@
 import os
+import requests
 import traceback
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-import google.generativeai as genai
 
 app = FastAPI()
 
-# Configuración de CORS para permitir peticiones desde la APK
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,11 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Cargar la API Key automáticamente desde las Environment Variables de Render
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -32,7 +27,7 @@ async def serve_index():
 async def chat_endpoint(request: Request):
     try:
         if not GEMINI_API_KEY:
-            raise ValueError("No se encontró la GEMINI_API_KEY en las variables de entorno de Render.")
+            raise ValueError("No se encontró la GEMINI_API_KEY en Render.")
 
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
@@ -40,28 +35,29 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún mensaje de texto.", "reply": "No recibí ningún mensaje de texto."}
 
-        # Prueba dinámica de modelos para asegurar compatibilidad sin error 404
-        response_text = ""
-        model_names = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-flash"]
+        # Petición HTTP directa a Google Gemini (API v1)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
-        last_exception = None
-        for m_name in model_names:
-            try:
-                model = genai.GenerativeModel(
-                    model_name=m_name,
-                    system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
-                )
-                res = model.generate_content(user_text)
-                response_text = res.text
-                break
-            except Exception as err:
-                last_exception = err
-                continue
+        payload = {
+            "contents": [{
+                "parts": [{"text": user_text}]
+            }],
+            "systemInstruction": {
+                "parts": [{"text": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."}]
+            }
+        }
 
-        if not response_text and last_exception:
-            raise last_exception
+        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
+        res_data = response.json()
 
-        return {"response": response_text, "reply": response_text}
+        if response.status_code != 200:
+            print("--- ERROR GOOGLE API RESPONSE ---", res_data)
+            error_msg = res_data.get("error", {}).get("message", "Error en la API de Google")
+            raise HTTPException(status_code=response.status_code, detail=error_msg)
+
+        # Extraer texto de la respuesta
+        reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+        return {"response": reply_text, "reply": reply_text}
 
     except Exception as e:
         print("--- ERROR EN CHAT ENDPOINT ---")
