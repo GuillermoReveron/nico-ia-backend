@@ -38,14 +38,34 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Usamos el modelo v1 actual compatible
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        # Intentar con nombres de modelos conocidos de Gemini
+        target_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
         
-        response = model.generate_content(
-            user_text,
-            generation_config={"temperature": 0.7}
+        # Buscar el primer modelo activo disponible en tu cuenta
+        selected_model_name = None
+        try:
+            available_models = [m.name for m in genai.list_models() if "generateContent" in m.supported_generation_methods]
+            if available_models:
+                # Priorizar si coincide con los nuestros, sino tomar el primero disponible
+                for tm in target_models:
+                    matching = [m for m in available_models if tm in m]
+                    if matching:
+                        selected_model_name = matching[0]
+                        break
+                if not selected_model_name:
+                    selected_model_name = available_models[0]
+        except Exception as e:
+            print("No se pudo listar modelos, probando default:", e)
+            selected_model_name = "gemini-1.5-flash-latest"
+
+        print(f"--- USANDO MODELO: {selected_model_name} ---")
+
+        model = genai.GenerativeModel(
+            model_name=selected_model_name,
+            system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
         )
         
+        response = model.generate_content(user_text)
         return {"response": response.text, "reply": response.text}
 
     except Exception as e:
