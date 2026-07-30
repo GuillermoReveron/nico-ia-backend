@@ -70,7 +70,7 @@ async def chat_endpoint(request: Request):
                 if any(w in user_text.lower() for w in ["clima", "temperatura", "tiempo", "grados", "noticias", "dólar"]):
                     search_query = f"{user_text} en {user_location} 2026"
 
-                search_result = tavily_client.search(query=search_query, max_results=3, search_depth="basic")
+                search_result = tavily_client.search(query=search_query, max_results=1, search_depth="basic")
                 results = search_result.get("results", [])
                 
                 if results:
