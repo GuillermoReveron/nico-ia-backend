@@ -164,15 +164,8 @@
             gap: 4px;
         }
 
-        .cam-btn.rec {
-            background: #ef4444;
-            color: #fff;
-        }
-
-        .cam-btn.cancel {
-            background: #475569;
-            color: #fff;
-        }
+        .cam-btn.rec { background: #ef4444; color: #fff; }
+        .cam-btn.cancel { background: #475569; color: #fff; }
 
         .sidebar-header {
             padding: 16px;
@@ -269,10 +262,7 @@
             align-items: center;
         }
 
-        .header-title {
-            flex: 1;
-            text-align: center;
-        }
+        .header-title { flex: 1; text-align: center; }
 
         #chat-container {
             flex: 1;
@@ -395,11 +385,7 @@
             padding: 0;
         }
 
-        .action-btn svg {
-            width: 18px;
-            height: 18px;
-            fill: currentColor;
-        }
+        .action-btn svg { width: 18px; height: 18px; fill: currentColor; }
 
         #user-input {
             flex: 1;
@@ -795,7 +781,7 @@
             audioPlayer.play().catch(e => console.error("Audio error:", e));
         }
 
-        // DESCARGA REAL DE PDF VÍA PETICIÓN DE SERVIDOR
+        // DESCARGA DE PDF VÍA PETICIÓN DE SERVIDOR
         async function triggerPdfDownloadFromServer(textContent) {
             try {
                 const res = await fetch('/api/download-pdf', {
@@ -810,16 +796,16 @@
                     const a = document.createElement('a');
                     a.style.display = 'none';
                     a.href = url;
-                    a.download = 'Resumen_Estudio_Nico_IA.pdf';
+                    a.download = 'Informe_Resumen_Nico_IA.pdf';
                     document.body.appendChild(a);
                     a.click();
                     window.URL.revokeObjectURL(url);
                 } else {
-                    alert("No se pudo descargar el PDF.");
+                    alert("No se pudo generar la descarga del PDF.");
                 }
             } catch (e) {
-                console.error("Error al descargar PDF:", e);
-                alert("Error al conectar con el servidor para descargar.");
+                console.error("Error descargando PDF:", e);
+                alert("Error al conectar con el servidor.");
             }
         }
 
@@ -830,7 +816,7 @@
             if (!message && !selectedBase64Image && !selectedBase64Video && !selectedFileB64) return;
             
             if (!message && selectedFileB64) {
-                message = `Hacé un resumen del archivo ${selectedFilename}.`;
+                message = `Hacé un resumen del archivo ${selectedFilename} y preparalo en PDF.`;
             }
 
             if (!message && selectedBase64Image) {
@@ -838,7 +824,7 @@
             }
 
             if (!message && selectedBase64Video) {
-                message = "Te envío este video grabado para analizar.";
+                message = "Te envío este video para analizar.";
             }
 
             stopAudio();
