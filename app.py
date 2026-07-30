@@ -60,7 +60,7 @@ def generate_image_engine(prompt: str) -> str:
     encoded = urllib.parse.quote(clean_prompt)
     return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&seed={seed}"
 
-# Extracción de texto de documentos (PDF, DOCX, TXT)
+# Extracción de texto de documentos
 def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
     try:
         if "," in file_b64:
@@ -92,52 +92,69 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# CLIMA GLOBAL INTELIGENTE (Captura ciudades compuestas como Las Flores, La Plata, Balcarce, etc.)
+# DICCIONARIO DIRECTO DE CIUDADES FRECUENTES + BUSCADOR GLOBAL
+KNOWN_CITIES = {
+    "tres arroyos": (-38.37, -60.27, "Tres Arroyos"),
+    "benito juarez": (-37.67, -59.80, "Benito Juárez"),
+    "las flores": (-36.01, -59.10, "Las Flores"),
+    "la plata": (-34.92, -57.95, "La Plata"),
+    "balcarce": (-37.84, -58.25, "Balcarce"),
+    "tandil": (-37.32, -59.13, "Tandil"),
+    "azul": (-36.77, -59.85, "Azul"),
+    "olavarria": (-36.89, -60.32, "Olavarría"),
+    "mar del plata": (-38.00, -57.55, "Mar del Plata"),
+    "bahia blanca": (-38.71, -62.26, "Bahía Blanca"),
+    "necohea": (-38.55, -58.73, "Necochea"),
+    "buenos aires": (-34.60, -58.38, "Buenos Aires"),
+    "cordoba": (-31.42, -64.18, "Córdoba"),
+    "mendoza": (-32.89, -68.84, "Mendoza"),
+    "rosario": (-32.95, -60.64, "Rosario")
+}
+
 def get_weather_global(user_text: str, default_location: str) -> str:
     try:
-        city_query = ""
-        # Extraer el texto completo que venga después de "en", "de" o "para"
-        match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
-        if match:
-            city_query = match.group(1).strip().replace("?", "").replace("¿", "").replace(".", "")
+        clean_text = user_text.lower().replace("?", "").replace("¿", "").replace(".", "").replace(",", "")
         
-        if not city_query:
-            city_query = default_location.split(",")[0]
+        # 1. Verificar si es una ciudad conocida de la región
+        lat, lon, city_name = None, None, None
+        for city_key, data in KNOWN_CITIES.items():
+            if city_key in clean_text:
+                lat, lon, city_name = data[0], data[1], data[2]
+                break
 
-        # 1. Buscar la ciudad en la API de geocodificación (priorizando Argentina)
-        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(city_query)}&count=5&language=es&format=json"
-        geo_res = requests.get(geo_url, timeout=4)
-        
-        lat, lon, name = None, None, city_query
-        if geo_res.status_code == 200 and geo_res.json().get("results"):
-            results = geo_res.json()["results"]
-            # Buscar coincidencia en Argentina primero
-            arg_result = next((r for r in results if r.get("country_code") == "AR"), results[0])
-            lat = arg_result.get("latitude")
-            lon = arg_result.get("longitude")
-            name = arg_result.get("name", city_query)
-            admin1 = arg_result.get("admin1", "")
-            if admin1 and admin1.lower() not in name.lower():
-                name = f"{name} ({admin1})"
-        else:
-            # Si no la encuentra, se apoya en Benito Juárez por defecto
-            lat, lon, name = -37.67, -59.80, "Benito Juárez"
+        # 2. Si no estaba en la lista, buscar en la API global
+        if not lat:
+            match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
+            city_query = match.group(1).strip().replace("?", "").replace("¿", "") if match else default_location.split(",")[0]
+            
+            geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(city_query)}&count=5&language=es&format=json"
+            geo_res = requests.get(geo_url, timeout=5)
+            
+            if geo_res.status_code == 200 and geo_res.json().get("results"):
+                results = geo_res.json()["results"]
+                arg_result = next((r for r in results if r.get("country_code") == "AR"), results[0])
+                lat = arg_result.get("latitude")
+                lon = arg_result.get("longitude")
+                city_name = arg_result.get("name", city_query)
 
-        # 2. Obtener pronóstico exacto
+        if not lat:
+            lat, lon, city_name = -37.67, -59.80, "Benito Juárez"
+
+        # 3. Consultar tiempo real
         weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto"
-        w_res = requests.get(weather_url, timeout=4)
+        w_res = requests.get(weather_url, timeout=5)
         
         if w_res.status_code == 200:
             daily = w_res.json().get("daily", {})
             max_temp = daily.get("temperature_2m_max", [None, None])[1]
             min_temp = daily.get("temperature_2m_min", [None, None])[1]
             rain = daily.get("precipitation_probability_max", [None, None])[1]
-            return f"DATOS METEOROLÓGICOS REALES EN TIEMPO REAL PARA MAÑANA EN {name.upper()}: Máxima {max_temp}°C, Mínima {min_temp}°C, Lluvia {rain}%."
+            return f"DATOS METEOROLÓGICOS REALES PARA MAÑANA EN {city_name.upper()}: Máxima {max_temp}°C, Mínima {min_temp}°C, Lluvia {rain}%."
     except Exception as e:
         print("Error en clima global:", e)
     return ""
 
-# Creador de archivos PDF binarios para descarga limpia
+# Creador de PDF
 def create_pdf_binary(text_content: str) -> bytes:
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -173,7 +190,6 @@ async def serve_index():
         return FileResponse("index.html")
     return "<h1>Servidor Nico IA activo</h1>"
 
-# ENDPOINT PARA DESCARGA DE PDF EN DISPOSITIVOS MÓVILES
 @app.post("/api/download-pdf")
 async def download_pdf_endpoint(request: Request):
     try:
@@ -206,7 +222,7 @@ async def chat_endpoint(request: Request):
         if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # 1. FRENO DE MANO PARA CORTESÍAS Y DESPEDIDAS
+        # 1. CORTESÍAS
         clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
         polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
         
@@ -242,7 +258,7 @@ async def chat_endpoint(request: Request):
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. CLIMA GLOBAL INTELIGENTE
+        # 4. CLIMA INFALIBLE Y DIRECTO
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
@@ -252,7 +268,6 @@ async def chat_endpoint(request: Request):
             if global_weather:
                 context_web = f"\n\nINFORMACIÓN METEOROLÓGICA EN TIEMPO REAL OBTENIDA:\n{global_weather}\n"
 
-        # Búsqueda web general si no es consulta meteorológica
         if not context_web and tavily_client and len(user_text.strip()) > 3:
             try:
                 search_query = f"{user_text} 2026"
@@ -269,7 +284,7 @@ async def chat_endpoint(request: Request):
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             "Estamos en el año 2026. "
-            "Mantené la lógica estricta del diálogo. Si en el prompt recibís los datos del clima de una ciudad, respondé con amabilidad indicando la temperatura y el pronóstico exacto de esa ciudad. NUNCA digas que no existe la ciudad si los datos meteorológicos están en el prompt. "
+            "Mantené la lógica estricta del diálogo. Respondé ÚNICAMENTE sobre la ciudad consultada por el usuario utilizando los datos del prompt. NUNCA menciones a Benito Juárez a menos que la consulta sea sobre esa ciudad. "
             "Si el usuario te pide un resumen de un documento, explicáselo en puntos clave muy claros. "
             "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar. NO usás la palabra 'che'."
         )
