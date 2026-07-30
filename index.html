@@ -24,6 +24,114 @@
         body {
             display: flex;
             flex-direction: column;
+            position: relative;
+        }
+
+        #sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #sidebar {
+            position: fixed;
+            top: 0;
+            left: -280px;
+            width: 280px;
+            height: 100%;
+            background-color: #121824;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 101;
+            display: flex;
+            flex-direction: column;
+            transition: left 0.3s ease;
+        }
+
+        #sidebar.open {
+            left: 0;
+        }
+
+        #sidebar-overlay.open {
+            display: block;
+            opacity: 1;
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sidebar-title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #00f2fe;
+        }
+
+        .new-chat-side-btn {
+            background: linear-gradient(135deg, #00c6ff, #0072ff);
+            color: white;
+            border: none;
+            padding: 10px 14px;
+            margin: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .sessions-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0 12px 12px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .session-item {
+            padding: 10px 12px;
+            border-radius: 10px;
+            background: #1a2332;
+            color: #cbd5e1;
+            font-size: 0.9rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid transparent;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .session-item.active {
+            border-color: #00f2fe;
+            background: rgba(0, 242, 254, 0.1);
+            color: #00f2fe;
+            font-weight: 600;
+        }
+
+        .delete-session-btn {
+            background: none;
+            border: none;
+            color: #ef4444;
+            font-size: 1.1rem;
+            cursor: pointer;
+            padding: 0 4px;
         }
 
         header {
@@ -41,31 +149,19 @@
             position: relative;
         }
 
-        .header-title {
-            width: 100%;
-            text-align: center;
-        }
-
-        .reset-btn {
-            background: rgba(0, 242, 254, 0.1);
-            border: 1px solid rgba(0, 242, 254, 0.3);
+        .menu-btn {
+            background: none;
+            border: none;
             color: #00f2fe;
-            padding: 5px 10px;
-            border-radius: 12px;
-            font-size: 0.8rem;
-            font-weight: 600;
             cursor: pointer;
-            position: absolute;
-            right: 12px;
+            font-size: 1.4rem;
             display: flex;
             align-items: center;
-            gap: 4px;
-            transition: all 0.2s ease;
         }
 
-        .reset-btn:active {
-            transform: scale(0.95);
-            background: rgba(0, 242, 254, 0.2);
+        .header-title {
+            flex: 1;
+            text-align: center;
         }
 
         #chat-container {
@@ -196,16 +292,25 @@
 </head>
 <body>
 
-    <header>
-        <div class="header-title">Nico IA</div>
-        <button class="reset-btn" onclick="resetChat()" title="Iniciar nueva conversación">
-            🔄 Nuevo
+    <div id="sidebar-overlay" onclick="toggleSidebar()"></div>
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-title">Historial de Charlas</span>
+            <button class="menu-btn" onclick="toggleSidebar()">✕</button>
+        </div>
+        <button class="new-chat-side-btn" onclick="createNewSession()">
+            ➕ Nueva Charla
         </button>
+        <div class="sessions-list" id="sessions-list"></div>
+    </div>
+
+    <header>
+        <button class="menu-btn" onclick="toggleSidebar()" title="Ver historial">☰</button>
+        <div class="header-title">Nico IA</div>
+        <button class="action-btn" onclick="createNewSession()" title="Nueva Charla" style="color:#00f2fe;">➕</button>
     </header>
 
-    <div id="chat-container">
-        <div class="message bot-message">¡Buenas! Soy Nico IA. ¿En qué te doy una mano hoy?</div>
-    </div>
+    <div id="chat-container"></div>
 
     <div id="visualizer-container">
         <div id="ai-orb" class="ai-orb" onclick="stopAudio()" title="Tocar para callar"></div>
@@ -241,16 +346,115 @@
         let isListening = false;
         let userLocation = "Benito Juárez, Provincia de Buenos Aires, Argentina";
 
-        // Obtener geolocalización real del dispositivo
+        let currentSessionId = localStorage.getItem('nico_current_session') || 'session_' + Date.now();
+        let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
+
+        if (Object.keys(sessions).length === 0) {
+            sessions[currentSessionId] = {
+                title: "Nueva Charla",
+                messages: [{ sender: 'bot', text: '¡Buenas! Soy Nico IA. ¿En qué te doy una mano hoy?' }]
+            };
+            saveSessions();
+        } else if (!sessions[currentSessionId]) {
+            currentSessionId = Object.keys(sessions)[0];
+        }
+
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition((pos) => {
                 userLocation = `Latitud ${pos.coords.latitude}, Longitud ${pos.coords.longitude} (Benito Juárez, Buenos Aires, Argentina)`;
-            }, (err) => {
-                console.log("GPS no disponible, utilizando ubicación por defecto.");
+            }, (err) => console.log("GPS por defecto"));
+        }
+
+        function saveSessions() {
+            localStorage.setItem('nico_sessions', JSON.stringify(sessions));
+            localStorage.setItem('nico_current_session', currentSessionId);
+            renderSessionsList();
+        }
+
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('open');
+        }
+
+        function renderSessionsList() {
+            const listContainer = document.getElementById('sessions-list');
+            listContainer.innerHTML = '';
+
+            Object.keys(sessions).reverse().forEach(id => {
+                const session = sessions[id];
+                const item = document.createElement('div');
+                item.className = `session-item ${id === currentSessionId ? 'active' : ''}`;
+                
+                const titleSpan = document.createElement('span');
+                titleSpan.style.overflow = 'hidden';
+                titleSpan.style.textOverflow = 'ellipsis';
+                titleSpan.innerText = session.title || "Charla";
+                titleSpan.onclick = () => switchSession(id);
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'delete-session-btn';
+                delBtn.innerHTML = '🗑️';
+                delBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    deleteSession(id);
+                };
+
+                item.appendChild(titleSpan);
+                item.appendChild(delBtn);
+                listContainer.appendChild(item);
             });
         }
 
-        // Cortar audio y apagar la animación de orbita
+        function switchSession(id) {
+            currentSessionId = id;
+            localStorage.setItem('nico_current_session', currentSessionId);
+            renderCurrentChat();
+            renderSessionsList();
+            toggleSidebar();
+            stopAudio();
+        }
+
+        function createNewSession() {
+            const newId = 'session_' + Date.now();
+            sessions[newId] = {
+                title: "Nueva Charla",
+                messages: [{ sender: 'bot', text: '¡Buenas! Soy Nico IA. ¿En qué te doy una mano hoy?' }]
+            };
+            currentSessionId = newId;
+            saveSessions();
+            renderCurrentChat();
+            if (document.getElementById('sidebar').classList.contains('open')) {
+                toggleSidebar();
+            }
+            stopAudio();
+        }
+
+        function deleteSession(id) {
+            delete sessions[id];
+            const remainingKeys = Object.keys(sessions);
+            if (remainingKeys.length === 0) {
+                createNewSession();
+            } else {
+                currentSessionId = remainingKeys[remainingKeys.length - 1];
+                saveSessions();
+                renderCurrentChat();
+            }
+        }
+
+        function renderCurrentChat() {
+            const container = document.getElementById('chat-container');
+            container.innerHTML = '';
+            const activeSession = sessions[currentSessionId];
+            if (!activeSession) return;
+
+            activeSession.messages.forEach(msg => {
+                const className = msg.sender === 'user' ? 'user-message' : 'bot-message';
+                appendMessageToUI(msg.text, className);
+            });
+        }
+
         function stopAudio() {
             if (audioPlayer) {
                 audioPlayer.pause();
@@ -261,16 +465,12 @@
 
         function playAudioResponse(base64Audio) {
             if (!base64Audio) return;
-
             stopAudio();
-
             audioPlayer.src = "data:audio/mp3;base64," + base64Audio;
-            
             audioPlayer.onplay = () => orb.classList.add('speaking');
             audioPlayer.onended = () => orb.classList.remove('speaking');
             audioPlayer.onerror = () => orb.classList.remove('speaking');
-
-            audioPlayer.play().catch(e => console.error("Error al reproducir audio:", e));
+            audioPlayer.play().catch(e => console.error("Audio error:", e));
         }
 
         async function sendMessage() {
@@ -280,18 +480,33 @@
 
             stopAudio();
 
-            appendMessage(message, 'user-message');
+            const activeSession = sessions[currentSessionId];
+            activeSession.messages.push({ sender: 'user', text: message });
+
+            if (activeSession.title === "Nueva Charla") {
+                activeSession.title = message.substring(0, 20) + "...";
+            }
+
+            saveSessions();
+            appendMessageToUI(message, 'user-message');
             inputField.value = '';
 
-            const loadingDiv = appendMessage('Pensando...', 'bot-message');
+            const loadingDiv = appendMessageToUI('Pensando...', 'bot-message');
 
             try {
+                const historyPayload = activeSession.messages.map(m => ({
+                    role: m.sender === 'user' ? 'user' : 'assistant',
+                    content: m.text
+                }));
+
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         message: message,
-                        location: userLocation 
+                        location: userLocation,
+                        session_id: currentSessionId,
+                        history: historyPayload
                     })
                 });
 
@@ -299,6 +514,9 @@
                 const botReply = data.reply || data.response || "No recibí respuesta.";
 
                 loadingDiv.innerText = botReply;
+
+                activeSession.messages.push({ sender: 'bot', text: botReply });
+                saveSessions();
 
                 if (data.audio) {
                     playAudioResponse(data.audio);
@@ -310,18 +528,7 @@
             }
         }
 
-        async function resetChat() {
-            stopAudio();
-            try {
-                await fetch('/api/reset', { method: 'POST' });
-                const chatContainer = document.getElementById('chat-container');
-                chatContainer.innerHTML = '<div class="message bot-message">¡Chat reiniciado! ¿En qué te ayudo ahora?</div>';
-            } catch (e) {
-                console.error("Error al reiniciar chat:", e);
-            }
-        }
-
-        function appendMessage(text, className) {
+        function appendMessageToUI(text, className) {
             const chatContainer = document.getElementById('chat-container');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
@@ -333,10 +540,9 @@
 
         function toggleSpeechRecognition() {
             stopAudio();
-
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                alert("El reconocimiento de voz no está soportado en este navegador.");
+                alert("Reconocimiento de voz no soportado.");
                 return;
             }
 
@@ -376,13 +582,16 @@
         function handleFileSelect(event) {
             const file = event.target.files[0];
             if (file) {
-                appendMessage(`Archivo seleccionado: ${file.name}`, 'user-message');
+                appendMessageToUI(`Archivo seleccionado: ${file.name}`, 'user-message');
             }
         }
 
         document.getElementById('user-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
         });
+
+        renderCurrentChat();
+        renderSessionsList();
     </script>
 </body>
 </html>
