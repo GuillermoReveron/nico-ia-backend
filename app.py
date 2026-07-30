@@ -5,10 +5,12 @@ import requests
 import traceback
 import asyncio
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import edge_tts
 from tavily import TavilyClient
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 
 app = FastAPI()
 
@@ -25,7 +27,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-# Generación de voz argentina masculina joven a ritmo natural (+10%)
+# Voz masculina argentina joven (+10% velocidad)
 async def generate_voice_male(text: str) -> str:
     clean_text = text.replace("*", "").replace("#", "").strip()
     if not clean_text:
@@ -38,6 +40,35 @@ async def generate_voice_male(text: str) -> str:
             fp.write(chunk["data"])
     fp.seek(0)
     return base64.b64encode(fp.read()).decode('utf-8')
+
+# Función helper para generar PDF al instante
+def create_pdf_bytes(text_content: str) -> bytes:
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(40, 750, "Documento Generado por Nico IA")
+    p.line(40, 740, 550, 740)
+    
+    p.setFont("Helvetica", 10)
+    y = 710
+    for line in text_content.split('\n'):
+        # Envolver texto simple
+        while len(line) > 80:
+            p.drawString(40, y, line[:80])
+            line = line[80:]
+            y -= 15
+            if y < 40:
+                p.showPage()
+                y = 750
+        p.drawString(40, y, line)
+        y -= 15
+        if y < 40:
+            p.showPage()
+            y = 750
+            
+    p.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -55,13 +86,14 @@ async def chat_endpoint(request: Request):
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
         user_location = data.get("location") or "Benito Juárez, Provincia de Buenos Aires, Argentina"
         history_from_client = data.get("history") or []
+        user_image_b64 = data.get("image") or ""
         
-        if not user_text:
-            return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
+        if not user_text and not user_image_b64:
+            return {"response": "No recibí información.", "reply": "No recibí información."}
 
-        # Búsqueda web ultra rápida (1 resultado)
+        # Búsqueda web ultra rápida si aplica
         context_web = ""
-        if tavily_client:
+        if tavily_client and user_text:
             try:
                 search_query = user_text
                 if any(w in user_text.lower() for w in ["clima", "temperatura", "tiempo", "grados", "noticias", "dólar"]):
@@ -77,23 +109,23 @@ async def chat_endpoint(request: Request):
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
 
-        # Prompt con regla estricta de Grados Celsius (°C) y sin "che"
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
             "Mantené la lógica estricta del diálogo. Si informás la temperatura o el clima, usá SIEMPRE grados Celsius (°C), nunca Fahrenheit. "
-            "NO uses la palabra 'che'. Respondé de forma breve, clara, directa y fluida (máximo 2 o 3 oraciones)."
+            "NO uses la palabra 'che'. Si el usuario pide generar un informe o PDF, indicale que se lo adjuntaste para descargar."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
         
-        # Mantiene el hilo específico de la sesión abierta usando el historial enviado por la APK
         for msg in history_from_client[-6:]:
             messages_payload.append(msg)
 
         user_content = user_text
         if context_web:
             user_content += context_web
+        if user_image_b64:
+            user_content += "\n[IMAGEN ADJUNTADA POR EL USUARIO PARA ANÁLISIS/EDICIÓN]"
 
         messages_payload.append({"role": "user", "content": user_content})
 
@@ -101,7 +133,7 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 120,
+            "max_tokens": 200,
             "temperature": 0.4
         }
         headers = {
@@ -109,19 +141,25 @@ async def chat_endpoint(request: Request):
             "Content-Type": "application/json"
         }
 
-        response = requests.post(url, json=payload, headers=headers, timeout=8)
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
         res_json = response.json()
 
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
 
-            # Generar audio con la voz corregida
+            # Si el usuario solicitó crear/descargar PDF
+            pdf_b64 = ""
+            if any(w in user_text.lower() for w in ["pdf", "descargar informe", "generar documento", "resumen en archivo"]):
+                pdf_bytes = create_pdf_bytes(reply_text)
+                pdf_b64 = base64.b64encode(pdf_bytes).decode('utf-8')
+
             audio_base64 = await generate_voice_male(reply_text)
 
             return {
                 "response": reply_text, 
                 "reply": reply_text,
-                "audio": audio_base64
+                "audio": audio_base64,
+                "pdf": pdf_b64
             }
         else:
             return {"response": "Error en el servidor.", "reply": "Error en el servidor."}
