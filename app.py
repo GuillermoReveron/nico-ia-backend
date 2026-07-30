@@ -35,31 +35,48 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        # Lista de modelos para rotar si uno se queda sin cuota momentánea
+        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
         
-        payload = {
-            "contents": [{
-                "parts": [{"text": user_text}]
-            }],
-            "systemInstruction": {
-                "parts": [{"text": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."}]
+        reply_text = None
+
+        for model_name in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+            
+            payload = {
+                "contents": [{
+                    "parts": [{"text": user_text}]
+                }],
+                "systemInstruction": {
+                    "parts": [{"text": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."}]
+                }
             }
-        }
 
-        headers = {"Content-Type": "application/json"}
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
-        res_data = response.json()
+            headers = {"Content-Type": "application/json"}
+            response = requests.post(url, json=payload, headers=headers, timeout=20)
+            res_data = response.json()
 
-        if response.status_code == 200:
-            reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-            return {"response": reply_text, "reply": reply_text}
-        else:
-            error_msg = res_data.get("error", {}).get("message", "Error al procesar")
-            return {"response": f"Error: {error_msg}", "reply": f"Error: {error_msg}"}
+            if response.status_code == 200:
+                try:
+                    reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                    break
+                except KeyError:
+                    continue
+            elif response.status_code == 429:
+                # Si se agota la cuota por minuto, prueba automáticamente el siguiente modelo
+                print(f"Cuota saturada en {model_name}, probando el siguiente...")
+                continue
+            else:
+                print(f"Error {response.status_code} en {model_name}:", res_data)
+
+        if not reply_text:
+            reply_text = "Che, dame 30 segundos que Google me pausó las respuestas por enviar muy rápido. ¡Volvé a probar en un toque!"
+
+        return {"response": reply_text, "reply": reply_text}
 
     except Exception as e:
         traceback.print_exc()
-        return {"response": f"Error: {str(e)}", "reply": f"Error: {str(e)}"}
+        return {"response": "Tuve un contratiempo al procesar la respuesta. Reintentá en un ratito.", "reply": "Tuve un contratiempo al procesar la respuesta. Reintentá en un ratito."}
 
 if __name__ == "__main__":
     import uvicorn
