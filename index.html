@@ -76,7 +76,6 @@
             align-items: center;
             height: 65px;
             flex-shrink: 0;
-            position: relative;
         }
 
         .ai-orb {
@@ -169,11 +168,10 @@
     <header>Nico IA</header>
 
     <div id="chat-container">
-        <div class="message bot-message">¡Hola! Soy Nico IA. ¿En qué te puedo ayudar hoy?</div>
+        <div class="message bot-message">¡Qué hacés! Soy Nico IA. ¿En qué te doy una mano hoy?</div>
     </div>
 
     <div id="visualizer-container">
-        <!-- Tocando el óvalo se frena el audio inmediatamente -->
         <div id="ai-orb" class="ai-orb" onclick="stopAudio()" title="Tocar para callar"></div>
     </div>
 
@@ -205,8 +203,17 @@
         const audioPlayer = document.getElementById('audio-player');
         let recognition = null;
         let isListening = false;
+        let userLocation = "Benito Juárez, Buenos Aires, Argentina";
 
-        // Función para detener el audio y apagar la animación inmediatamente
+        // Obtener geolocalización
+        if ("geolocation" in navigator) {
+            navigator.geolocation.getCurrentPosition((pos) => {
+                userLocation = `Latitud ${pos.coords.latitude}, Longitud ${pos.coords.longitude} (Benito Juárez, Buenos Aires, Argentina)`;
+            }, (err) => {
+                console.log("GPS no permitido, usando ubicación por defecto");
+            });
+        }
+
         function stopAudio() {
             if (audioPlayer) {
                 audioPlayer.pause();
@@ -218,21 +225,13 @@
         function playAudioResponse(base64Audio) {
             if (!base64Audio) return;
 
-            stopAudio(); // Detener cualquier reproducción previa
+            stopAudio();
 
             audioPlayer.src = "data:audio/mp3;base64," + base64Audio;
             
-            audioPlayer.onplay = () => {
-                orb.classList.add('speaking');
-            };
-
-            audioPlayer.onended = () => {
-                orb.classList.remove('speaking');
-            };
-
-            audioPlayer.onerror = () => {
-                orb.classList.remove('speaking');
-            };
+            audioPlayer.onplay = () => orb.classList.add('speaking');
+            audioPlayer.onended = () => orb.classList.remove('speaking');
+            audioPlayer.onerror = () => orb.classList.remove('speaking');
 
             audioPlayer.play().catch(e => console.error("Error al reproducir:", e));
         }
@@ -242,7 +241,6 @@
             const message = inputField.value.trim();
             if (!message) return;
 
-            // INTERRUMPIR AUDIO ANTERIOR AL ENVIAR NUEVO MENSAJE
             stopAudio();
 
             appendMessage(message, 'user-message');
@@ -254,7 +252,10 @@
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ 
+                        message: message,
+                        location: userLocation 
+                    })
                 });
 
                 const data = await response.json();
@@ -283,7 +284,7 @@
         }
 
         function toggleSpeechRecognition() {
-            stopAudio(); // Interrumpir audio al activar micrófono
+            stopAudio();
 
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
