@@ -233,53 +233,50 @@
         let isListening = false;
         let synth = window.speechSynthesis;
 
-        // Función mejorada para hablar (mantiene sincronizado el óvalo)
+        // Función para hablar (Conectada con la APK nativa)
         function speakText(text) {
-            if (!synth) return;
-
-            // Forzar cancelación de discursos trabados previamente
-            synth.cancel();
-
-            // Limpieza del texto para que no lea símbolos raros
             const cleanText = text.replace(/[*_#`~]/g, '').trim();
             if (!cleanText) return;
 
-            const utterance = new SpeechSynthesisUtterance(cleanText);
-            
-            // Buscar una voz en español disponible en Android
-            let voices = synth.getVoices();
-            let esVoice = voices.find(v => v.lang.includes('es-AR') || v.lang.includes('es-ES') || v.lang.includes('es'));
-            if (esVoice) utterance.voice = esVoice;
-
-            utterance.lang = 'es-AR';
-            utterance.rate = 1.0;
-            utterance.pitch = 1.0;
-
-            utterance.onstart = () => {
+            // 1. PRIORIDAD: Usar el motor de voz nativo de Android si está dentro de la APK
+            if (window.AndroidHost && typeof window.AndroidHost.speak === 'function') {
+                window.AndroidHost.speak(cleanText);
                 orb.classList.add('speaking');
-            };
+                
+                // Calcular tiempo de la animación según la longitud del texto
+                const speechDuration = Math.max(2500, cleanText.length * 70);
+                setTimeout(() => {
+                    orb.classList.remove('speaking');
+                }, speechDuration);
+                return;
+            }
 
-            utterance.onend = () => {
-                orb.classList.remove('speaking');
-            };
+            // 2. FALLBACK: Usar el navegador si no está en la APK
+            if (synth) {
+                synth.cancel();
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                let voices = synth.getVoices();
+                let esVoice = voices.find(v => v.lang.includes('es-AR') || v.lang.includes('es-ES') || v.lang.includes('es'));
+                if (esVoice) utterance.voice = esVoice;
 
-            utterance.onerror = (e) => {
-                console.error("Error TTS:", e);
-                orb.classList.remove('speaking');
-            };
+                utterance.lang = 'es-AR';
+                utterance.rate = 1.0;
+                utterance.pitch = 1.0;
 
-            // Pequeño retardo para asegurar que el motor de voz de Android se prepare
-            setTimeout(() => {
-                synth.speak(utterance);
-            }, 100);
+                utterance.onstart = () => orb.classList.add('speaking');
+                utterance.onend = () => orb.classList.remove('speaking');
+                utterance.onerror = () => orb.classList.remove('speaking');
+
+                setTimeout(() => {
+                    synth.speak(utterance);
+                }, 100);
+            }
         }
 
-        // Cargar voces en Android si no están listas de entrada
         if (synth && synth.onvoiceschanged !== undefined) {
             synth.onvoiceschanged = () => { synth.getVoices(); };
         }
 
-        // Desbloquear canal de audio en toque
         document.body.addEventListener('touchstart', () => {
             if (synth && synth.speaking === false) {
                 synth.resume();
@@ -292,7 +289,6 @@
             const message = inputField.value.trim();
             if (!message) return;
 
-            // Desbloquear audio mediante el evento del clic del usuario
             if (synth) synth.resume();
 
             appendMessage(message, 'user-message');
@@ -312,7 +308,7 @@
 
                 loadingDiv.innerText = botReply;
 
-                // ACTIVAR REPRODUCCIÓN DE VOZ Y ÓVALO ANIMADO
+                // REPRODUCIR VOZ Y MOVER ÓVALO
                 speakText(botReply);
 
             } catch (error) {
