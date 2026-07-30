@@ -5,3 +5,5 @@ edge-tts
 tavily-python
 reportlab
 fpdf2
+pypdf
+python-docx
