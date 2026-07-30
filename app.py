@@ -1,9 +1,12 @@
 import os
+import io
+import base64
 import requests
 import traceback
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from gtts import gTTS
 
 app = FastAPI()
 
@@ -36,21 +39,13 @@ async def chat_endpoint(request: Request):
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
         url = "https://api.groq.com/openai/v1/chat/completions"
-        
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": [
-                {
-                    "role": "system",
-                    "content": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
-                },
-                {
-                    "role": "user",
-                    "content": user_text
-                }
+                {"role": "system", "content": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial. Respondé de forma breve y fluida."},
+                {"role": "user", "content": user_text}
             ]
         }
-
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
             "Content-Type": "application/json"
@@ -61,12 +56,27 @@ async def chat_endpoint(request: Request):
 
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
-            print("--- RESPUESTA EXITOSA DE GROQ ---")
-            return {"response": reply_text, "reply": reply_text}
+            
+            # Generar audio MP3 con la voz de Google en español argentino/latino
+            audio_base64 = ""
+            try:
+                # Limpiamos asteriscos y formatos para la voz
+                clean_speech = reply_text.replace("*", "").replace("#", "").strip()
+                tts = gTTS(text=clean_speech, lang='es', tld='com.ar')
+                fp = io.BytesIO()
+                tts.write_to_fp(fp)
+                fp.seek(0)
+                audio_base64 = base64.b64encode(fp.read()).decode('utf-8')
+            except Exception as e:
+                print("Error al generar TTS audio:", e)
+
+            return {
+                "response": reply_text, 
+                "reply": reply_text,
+                "audio": audio_base64
+            }
         else:
-            err_msg = res_json.get("error", {}).get("message", "Error en Groq")
-            print(f"--- AVISO GROQ ({response.status_code}) ---:", err_msg)
-            return {"response": "Inconveniente temporal al procesar la respuesta.", "reply": "Inconveniente temporal al procesar la respuesta."}
+            return {"response": "Error en el servidor.", "reply": "Error en el servidor."}
 
     except Exception as e:
         traceback.print_exc()
