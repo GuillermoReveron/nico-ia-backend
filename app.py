@@ -24,6 +24,9 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
+# Memoria temporal simple para mantener el hilo del chat
+chat_history = []
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     if os.path.exists("index.html"):
@@ -32,6 +35,7 @@ async def serve_index():
 
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
+    global chat_history
     try:
         if not GROQ_API_KEY:
             return {"response": "Falta la API Key en Render.", "reply": "Falta la API Key en Render."}
@@ -42,56 +46,64 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Búsqueda optimizada y rápida en Tavily
+        # Búsqueda web optimizada con contexto temporal (Año 2026)
         context_web = ""
         if tavily_client:
             try:
-                # Si pregunta por el clima o temperatura, forzamos búsqueda meteorológica precisa
-                search_query = user_text
-                if any(w in user_text.lower() for w in ["clima", "temperatura", "tiempo", "grados"]):
-                    search_query = f"clima hoy en Benito Juarez Buenos Aires Argentina temperatura actual"
-
-                search_result = tavily_client.search(query=search_query, max_results=2, search_depth="basic")
+                search_query = f"{user_text} 2026"
+                search_result = tavily_client.search(query=search_query, max_results=3, search_depth="basic")
                 results = search_result.get("results", [])
                 
                 if results:
-                    context_web = "\n\nINFORMACIÓN ACTUALIZADA DE INTERNET:\n"
+                    context_web = "\n\nINFORMACIÓN ACTUALIZADA DE LA WEB (AÑO 2026):\n"
                     for res in results:
                         context_web += f"- {res.get('title')}: {res.get('content')}\n"
             except Exception as e:
-                print("Aviso búsqueda:", e)
+                print("Aviso búsqueda Tavily:", e)
 
         system_prompt = (
-            "Sos Nico IA, un asistente virtual argentino, directo y rápido. "
-            "Respondé de forma SÚPER BREVE (máximo 2 o 3 oraciones cortas). "
-            "Usa la información en tiempo real para dar datos exactos de clima, noticias o fechas."
+            "Sos Nico IA, un asistente virtual argentino, fluido, inteligente y cercano. "
+            "Estamos en el año 2026. Mantené el hilo de la conversación recordando los mensajes anteriores. "
+            "Respondé de forma concisa, clara y directa, utilizando la información web provista para datos actuales."
         )
 
+        # Armar el paquete de mensajes incluyendo el historial
+        messages_payload = [{"role": "system", "content": system_prompt}]
+        
+        # Agregar los últimos 6 mensajes del historial para no saturar memoria
+        for msg in chat_history[-6:]:
+            messages_payload.append(msg)
+
+        # Mensaje actual del usuario
         user_content = user_text
         if context_web:
             user_content += context_web
 
+        messages_payload.append({"role": "user", "content": user_content})
+
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
             "model": "llama-3.3-70b-versatile",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content}
-            ],
-            "max_tokens": 150,
-            "temperature": 0.3
+            "messages": messages_payload,
+            "max_tokens": 250,
+            "temperature": 0.4
         }
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
             "Content-Type": "application/json"
         }
 
-        response = requests.post(url, json=payload, headers=headers, timeout=8)
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
         res_json = response.json()
 
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
             
+            # Guardar en el historial la interacción actual
+            chat_history.append({"role": "user", "content": user_text})
+            chat_history.append({"role": "assistant", "content": reply_text})
+
+            # Generar audio MP3 de la respuesta
             audio_base64 = ""
             try:
                 clean_speech = reply_text.replace("*", "").replace("#", "").strip()
