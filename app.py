@@ -33,7 +33,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-# Voz argentina masculina joven (+10% velocidad)
+# Voz argentina masculina joven
 async def generate_voice_male(text: str) -> str:
     clean_text = text.replace("*", "").replace("#", "").replace("!", "").strip()
     if not clean_text:
@@ -47,7 +47,7 @@ async def generate_voice_male(text: str) -> str:
     fp.seek(0)
     return base64.b64encode(fp.read()).decode('utf-8')
 
-# Generar imágenes gratis con Pollinations.ai
+# Generación de imágenes con motor Pollinations.ai
 def generate_image_engine(prompt: str) -> str:
     clean_prompt = prompt.lower()
     for word in ["generar", "generame", "crear", "creame", "dibujar", "dibujame", "haceme", "editar", "editame", "cambiar", "cambiame", "una", "un", "imagen", "foto", "de", "del", "la", "el"]:
@@ -60,7 +60,7 @@ def generate_image_engine(prompt: str) -> str:
     encoded = urllib.parse.quote(clean_prompt)
     return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&seed={seed}"
 
-# Extracción de texto de documentos
+# Extracción de texto de documentos (PDF, DOCX, TXT)
 def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
     try:
         if "," in file_b64:
@@ -92,7 +92,7 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# DICCIONARIO DIRECTO DE CIUDADES FRECUENTES + BUSCADOR GLOBAL
+# Diccionario de coordenadas para ciudades frecuentes + geocodificación global
 KNOWN_CITIES = {
     "tres arroyos": (-38.37, -60.27, "Tres Arroyos"),
     "benito juarez": (-37.67, -59.80, "Benito Juárez"),
@@ -104,7 +104,7 @@ KNOWN_CITIES = {
     "olavarria": (-36.89, -60.32, "Olavarría"),
     "mar del plata": (-38.00, -57.55, "Mar del Plata"),
     "bahia blanca": (-38.71, -62.26, "Bahía Blanca"),
-    "necohea": (-38.55, -58.73, "Necochea"),
+    "necochea": (-38.55, -58.73, "Necochea"),
     "buenos aires": (-34.60, -58.38, "Buenos Aires"),
     "cordoba": (-31.42, -64.18, "Córdoba"),
     "mendoza": (-32.89, -68.84, "Mendoza"),
@@ -115,14 +115,12 @@ def get_weather_global(user_text: str, default_location: str) -> str:
     try:
         clean_text = user_text.lower().replace("?", "").replace("¿", "").replace(".", "").replace(",", "")
         
-        # 1. Verificar si es una ciudad conocida de la región
         lat, lon, city_name = None, None, None
         for city_key, data in KNOWN_CITIES.items():
             if city_key in clean_text:
                 lat, lon, city_name = data[0], data[1], data[2]
                 break
 
-        # 2. Si no estaba en la lista, buscar en la API global
         if not lat:
             match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
             city_query = match.group(1).strip().replace("?", "").replace("¿", "") if match else default_location.split(",")[0]
@@ -140,7 +138,6 @@ def get_weather_global(user_text: str, default_location: str) -> str:
         if not lat:
             lat, lon, city_name = -37.67, -59.80, "Benito Juárez"
 
-        # 3. Consultar tiempo real
         weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto"
         w_res = requests.get(weather_url, timeout=5)
         
@@ -154,12 +151,12 @@ def get_weather_global(user_text: str, default_location: str) -> str:
         print("Error en clima global:", e)
     return ""
 
-# Creador de PDF
+# Creador de PDF con formato limpio de paginado
 def create_pdf_binary(text_content: str) -> bytes:
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     p.setFont("Helvetica-Bold", 14)
-    p.drawString(40, 750, "Resumen de Estudio - Nico IA")
+    p.drawString(40, 750, "Resumen e Informe - Nico IA")
     p.line(40, 740, 550, 740)
     
     p.setFont("Helvetica", 10)
@@ -190,6 +187,7 @@ async def serve_index():
         return FileResponse("index.html")
     return "<h1>Servidor Nico IA activo</h1>"
 
+# ENDPOINT DE DESCARGA DIRECTA DE PDF
 @app.post("/api/download-pdf")
 async def download_pdf_endpoint(request: Request):
     try:
@@ -198,12 +196,12 @@ async def download_pdf_endpoint(request: Request):
         pdf_bytes = create_pdf_binary(content)
         
         headers = {
-            'Content-Disposition': 'attachment; filename="Resumen_Estudio_Nico_IA.pdf"'
+            'Content-Disposition': 'attachment; filename="Informe_Resumen_Nico_IA.pdf"'
         }
         return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
     except Exception as e:
         print("Error descargando PDF:", e)
-        return {"error": "No se pudo generar el archivo."}
+        return {"error": "No se pudo generar el archivo PDF."}
 
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
@@ -222,7 +220,7 @@ async def chat_endpoint(request: Request):
         if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # 1. CORTESÍAS
+        # 1. FRENO DE MANO PARA CORTESÍAS
         clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
         polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
         
@@ -258,7 +256,7 @@ async def chat_endpoint(request: Request):
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. CLIMA INFALIBLE Y DIRECTO
+        # 4. CLIMA
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
@@ -285,8 +283,8 @@ async def chat_endpoint(request: Request):
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             "Estamos en el año 2026. "
             "Mantené la lógica estricta del diálogo. Respondé ÚNICAMENTE sobre la ciudad consultada por el usuario utilizando los datos del prompt. NUNCA menciones a Benito Juárez a menos que la consulta sea sobre esa ciudad. "
-            "Si el usuario te pide un resumen de un documento, explicáselo en puntos clave muy claros. "
-            "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar. NO usás la palabra 'che'."
+            "Si el usuario te pide un resumen de un documento o texto, explicáselo detalladamente en puntos clave. "
+            "Si pide un PDF o informe para estudiar, confirmale que se lo dejaste listo para descargar con el botón inferior. NO usás la palabra 'che'."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
@@ -308,7 +306,7 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 400,
+            "max_tokens": 500,
             "temperature": 0.4
         }
         headers = {
@@ -323,7 +321,7 @@ async def chat_endpoint(request: Request):
             reply_text = res_json["choices"][0]["message"]["content"]
 
             has_pdf = False
-            pdf_triggers = ["pdf", "descargar", "informe", "documento", "estudiar", "resumen"]
+            pdf_triggers = ["pdf", "descargar", "informe", "documento", "estudiar", "resumen", "resumir"]
             if any(w in user_text.lower() for w in pdf_triggers) or file_b64:
                 has_pdf = True
 
