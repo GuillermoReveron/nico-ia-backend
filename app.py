@@ -102,7 +102,7 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 200,
+            "max_tokens": 120,
             "temperature": 0.5
         }
         headers = {
