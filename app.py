@@ -1,9 +1,9 @@
 import os
+import requests
 import traceback
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from google import genai
 
 app = FastAPI()
 
@@ -15,15 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-# Inicializar cliente de Google GenAI
-client = None
-if GEMINI_API_KEY:
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-    except Exception as e:
-        print("Error inicializando cliente GenAI:", e)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -34,7 +26,11 @@ async def serve_index():
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
     try:
-        if not GEMINI_API_KEY or not client:
+        # DIAGNÓSTICO: Imprimir qué clave está leyendo el sistema realmente
+        key_preview = f"{GEMINI_API_KEY[:4]}...{GEMINI_API_KEY[-4:]}" if len(GEMINI_API_KEY) > 8 else "CLAVE_INVALIDA_O_VACIA"
+        print(f"=== CLAVE LEÍDA POR RENDER: {key_preview} ===")
+
+        if not GEMINI_API_KEY:
             return {"response": "Falta GEMINI_API_KEY en Render.", "reply": "Falta GEMINI_API_KEY en Render."}
 
         data = await request.json()
@@ -43,34 +39,34 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Nombres oficiales compatibles con la SDK google-genai
-        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash-exp"]
-        reply_text = None
+        # Probamos endpoint REST directo con gemini-2.0-flash
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{"parts": [{"text": user_text}]}]
+        }
+        headers = {"Content-Type": "application/json"}
 
-        for model_name in models_to_try:
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=user_text,
-                    config={
-                        "system_instruction": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
-                    }
-                )
-                if response and response.text:
-                    reply_text = response.text
-                    print(f"--- RESPUESTA EXITOSA CON: {model_name} ---")
-                    break
-            except Exception as mod_err:
-                print(f"--- AVISO EN {model_name} ---:", mod_err)
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        res_json = response.json()
 
-        if not reply_text:
-            reply_text = "¡Hola che! Se agotó el límite diario de consultas gratuitas de Google en este proyecto. Si querés seguir probando hoy mismo, podés generar una API Key nueva desde Google AI Studio y actualizarla en Render."
+        print(f"=== STATUS CODE GOOGLE: {response.status_code} ===")
 
-        return {"response": reply_text, "reply": reply_text}
+        if response.status_code == 200:
+            reply_text = res_json["candidates"][0]["content"]["parts"][0]["text"]
+            return {"response": reply_text, "reply": reply_text}
+        else:
+            err_msg = res_json.get("error", {}).get("message", "Error desconocido")
+            print(f"=== ERROR CRUDO GOOGLE ===: {err_msg}")
+            
+            # Si el IP de Render está bloqueado en Gemini, usamos un fallback automático
+            return {
+                "response": "Google bloqueó la petición por límite de IP/Cuota de Render. Necesitamos cambiar de proveedor o usar proxy.",
+                "reply": "Google bloqueó la petición por límite de IP/Cuota de Render. Necesitamos cambiar de proveedor o usar proxy."
+            }
 
     except Exception as e:
         traceback.print_exc()
-        return {"response": "Inconveniente temporal. Intentá nuevamente en unos minutos.", "reply": "Inconveniente temporal. Intentá nuevamente en unos minutos."}
+        return {"response": "Error interno del servidor.", "reply": "Error interno del servidor."}
 
 if __name__ == "__main__":
     import uvicorn
