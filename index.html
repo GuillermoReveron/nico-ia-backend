@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Nico IA</title>
-    <!-- Librerías de procesamiento de PDFs y Word directamente en el navegador -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -30,13 +27,13 @@
             position: relative;
         }
 
-        #sidebar-overlay, #camera-modal-overlay {
+        #sidebar-overlay, #camera-modal-overlay, #live-camera-modal {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.7);
             backdrop-filter: blur(4px);
             z-index: 100;
             display: none;
@@ -61,8 +58,8 @@
         #sidebar.open { left: 0; }
         #sidebar-overlay.open { display: block; opacity: 1; }
         #camera-modal-overlay.open { display: flex; opacity: 1; align-items: center; justify-content: center; }
+        #live-camera-modal.open { display: flex; opacity: 1; flex-direction: column; align-items: center; justify-content: center; z-index: 110; }
 
-        /* Modal para elegir tipo de captura */
         .modal-box {
             background: #121824;
             border: 1px solid rgba(255,255,255,0.1);
@@ -95,6 +92,48 @@
             align-items: center;
             gap: 10px;
             cursor: pointer;
+        }
+
+        /* Modal cámara en vivo */
+        .camera-view-box {
+            position: relative;
+            width: 90%;
+            max-width: 400px;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #webcam-video {
+            width: 100%;
+            height: 320px;
+            object-fit: cover;
+        }
+
+        .cam-controls {
+            display: flex;
+            justify-content: space-around;
+            width: 100%;
+            padding: 15px;
+            background: #121824;
+        }
+
+        .cam-btn {
+            background: #00f2fe;
+            color: #000;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .cam-btn.cancel {
+            background: #ef4444;
+            color: #fff;
         }
 
         .sidebar-header {
@@ -348,7 +387,7 @@
             flex-shrink: 0;
         }
 
-        #file-input, #camera-input-photo, #camera-input-video, #gallery-input { display: none; }
+        #file-input, #gallery-input { display: none; }
     </style>
 </head>
 <body>
@@ -365,13 +404,24 @@
         <div class="sessions-list" id="sessions-list"></div>
     </div>
 
-    <!-- Modal de opciones para la Cámara -->
+    <!-- Modal de Selección -->
     <div id="camera-modal-overlay" onclick="closeCameraModal(event)">
         <div class="modal-box" onclick="event.stopPropagation()">
             <div class="modal-title">Seleccionar Opción</div>
-            <button class="modal-btn" onclick="openCameraPhoto()">📸 Sacar Foto con Cámara</button>
-            <button class="modal-btn" onclick="openCameraVideo()">🎥 Grabar Video</button>
+            <button class="modal-btn" onclick="startLiveCamera('user')">📸 Tomar Foto con Cámara</button>
             <button class="modal-btn" onclick="openGallery()">🖼️ Buscar en Galería</button>
+        </div>
+    </div>
+
+    <!-- Modal Visor de Cámara en Vivo -->
+    <div id="live-camera-modal">
+        <div class="camera-view-box">
+            <video id="webcam-video" autoplay playsinline muted></video>
+            <canvas id="webcam-canvas" style="display:none;"></canvas>
+            <div class="cam-controls">
+                <button class="cam-btn cancel" onclick="stopLiveCamera()">Cancelar</button>
+                <button class="cam-btn" onclick="capturePhotoFromCamera()">📸 Capturar</button>
+            </div>
         </div>
     </div>
 
@@ -394,13 +444,11 @@
         </button>
         <input type="file" id="file-input" accept=".txt,.pdf,.doc,.docx,.csv,.json" onchange="handleDocumentSelect(event)">
 
-        <!-- Botón Cámara (Abre el Modal para elegir) -->
+        <!-- Cámara / Galería -->
         <button class="action-btn" onclick="openCameraModal()" title="Cámara / Galería">
             <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
 
-        <input type="file" id="camera-input-photo" accept="image/*" capture="user" onchange="handleMediaSelected(event)">
-        <input type="file" id="camera-input-video" accept="video/*" capture="user" onchange="handleMediaSelected(event)">
         <input type="file" id="gallery-input" accept="image/*,video/*" onchange="handleMediaSelected(event)">
 
         <!-- Micrófono -->
@@ -418,8 +466,6 @@
     <audio id="audio-player" style="display:none;"></audio>
 
     <script>
-        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-
         const orb = document.getElementById('ai-orb');
         const audioPlayer = document.getElementById('audio-player');
         let recognition = null;
@@ -428,7 +474,7 @@
         let selectedBase64Image = "";
         let selectedFileB64 = "";
         let selectedFilename = "";
-        let extractedText = "";
+        let videoStream = null;
 
         let currentSessionId = localStorage.getItem('nico_current_session') || 'session_' + Date.now();
         let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
@@ -457,19 +503,52 @@
             document.getElementById('camera-modal-overlay').classList.remove('open');
         }
 
-        function openCameraPhoto() {
-            closeCameraModal();
-            document.getElementById('camera-input-photo').click();
-        }
-
-        function openCameraVideo() {
-            closeCameraModal();
-            document.getElementById('camera-input-video').click();
-        }
-
         function openGallery() {
             closeCameraModal();
             document.getElementById('gallery-input').click();
+        }
+
+        // Abrir Visor de Cámara WebRTC (Garantizado en WebView Android)
+        async function startLiveCamera() {
+            closeCameraModal();
+            const modal = document.getElementById('live-camera-modal');
+            const video = document.getElementById('webcam-video');
+            modal.classList.add('open');
+
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: { ideal: "environment" } }, 
+                    audio: false 
+                });
+                video.srcObject = videoStream;
+            } catch (err) {
+                console.error("Error abriendo cámara en vivo:", err);
+                alert("No se pudo iniciar la cámara en vivo. Usando alternativa de archivo.");
+                stopLiveCamera();
+                document.getElementById('gallery-input').click();
+            }
+        }
+
+        function stopLiveCamera() {
+            const modal = document.getElementById('live-camera-modal');
+            modal.classList.remove('open');
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+        }
+
+        function capturePhotoFromCamera() {
+            const video = document.getElementById('webcam-video');
+            const canvas = document.getElementById('webcam-canvas');
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            
+            selectedBase64Image = canvas.toDataURL('image/jpeg', 0.85);
+            stopLiveCamera();
+            appendMessageToUI("📷 Foto capturada con la cámara", 'user-message', selectedBase64Image);
         }
 
         function saveSessions() {
@@ -574,31 +653,12 @@
             reader.readAsDataURL(file);
         }
 
-        // Extracción directa de texto para PDF, Word y TXT
-        async function handleDocumentSelect(event) {
+        // Lectura completa de documentos a Base64 para procesamiento en servidor
+        function handleDocumentSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
 
             selectedFilename = file.name;
-            extractedText = "";
-            const ext = file.name.toLowerCase().split('.').pop();
-
-            if (ext === 'pdf') {
-                const arrayBuffer = await file.arrayBuffer();
-                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-                for (let i = 1; i <= pdf.numPages; i++) {
-                    const page = await pdf.getPage(i);
-                    const textContent = await page.getTextContent();
-                    extractedText += textContent.items.map(item => item.str).join(' ') + '\n';
-                }
-            } else if (ext === 'docx' || ext === 'doc') {
-                const arrayBuffer = await file.arrayBuffer();
-                const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
-                extractedText = result.value;
-            } else {
-                extractedText = await file.text();
-            }
-
             const reader = new FileReader();
             reader.onload = function(e) {
                 selectedFileB64 = e.target.result;
@@ -631,8 +691,8 @@
             
             if (!message && !selectedBase64Image && !selectedFileB64) return;
             
-            if (!message && (selectedFileB64 || extractedText)) {
-                message = `Hacé un resumen claro del archivo ${selectedFilename}.`;
+            if (!message && selectedFileB64) {
+                message = `Hacé un resumen del archivo ${selectedFilename}.`;
             }
 
             if (!message && selectedBase64Image) {
@@ -658,12 +718,10 @@
             const imageToSend = selectedBase64Image;
             const fileToSend = selectedFileB64;
             const filenameToSend = selectedFilename;
-            const textToSend = extractedText;
 
             selectedBase64Image = "";
             selectedFileB64 = "";
             selectedFilename = "";
-            extractedText = "";
             inputField.value = '';
 
             const loadingDiv = appendMessageToUI('Pensando...', 'bot-message');
@@ -683,7 +741,6 @@
                         image: imageToSend,
                         file_b64: fileToSend,
                         filename: filenameToSend,
-                        extracted_text: textToSend,
                         session_id: currentSessionId,
                         history: historyPayload
                     })
