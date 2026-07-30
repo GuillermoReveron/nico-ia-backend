@@ -74,8 +74,9 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 60px;
+            height: 65px;
             flex-shrink: 0;
+            position: relative;
         }
 
         .ai-orb {
@@ -87,6 +88,7 @@
             box-shadow: 0 0 15px rgba(127, 0, 255, 0.6);
             transition: transform 0.3s ease;
             animation: orbGlow 3s ease infinite alternate;
+            cursor: pointer;
         }
 
         .ai-orb.speaking {
@@ -171,7 +173,8 @@
     </div>
 
     <div id="visualizer-container">
-        <div id="ai-orb" class="ai-orb"></div>
+        <!-- Tocando el óvalo se frena el audio inmediatamente -->
+        <div id="ai-orb" class="ai-orb" onclick="stopAudio()" title="Tocar para callar"></div>
     </div>
 
     <div id="input-container">
@@ -183,7 +186,6 @@
         <button class="action-btn" onclick="document.getElementById('camera-input').click()">
             <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
-        <input type="file" id="camera-input" accept="image/*" capture="environment" onchange="handleFileSelect(event)">
 
         <button class="action-btn" id="mic-btn" onclick="toggleSpeechRecognition()">
             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
@@ -196,7 +198,6 @@
         </button>
     </div>
 
-    <!-- Reproductor de Audio HTML5 oculto -->
     <audio id="audio-player" style="display:none;"></audio>
 
     <script>
@@ -205,9 +206,19 @@
         let recognition = null;
         let isListening = false;
 
-        // Reproduce el audio MP3 enviado desde el backend de Python
+        // Función para detener el audio y apagar la animación inmediatamente
+        function stopAudio() {
+            if (audioPlayer) {
+                audioPlayer.pause();
+                audioPlayer.currentTime = 0;
+            }
+            orb.classList.remove('speaking');
+        }
+
         function playAudioResponse(base64Audio) {
             if (!base64Audio) return;
+
+            stopAudio(); // Detener cualquier reproducción previa
 
             audioPlayer.src = "data:audio/mp3;base64," + base64Audio;
             
@@ -223,13 +234,16 @@
                 orb.classList.remove('speaking');
             };
 
-            audioPlayer.play().catch(e => console.error("Error al reproducir audio:", e));
+            audioPlayer.play().catch(e => console.error("Error al reproducir:", e));
         }
 
         async function sendMessage() {
             const inputField = document.getElementById('user-input');
             const message = inputField.value.trim();
             if (!message) return;
+
+            // INTERRUMPIR AUDIO ANTERIOR AL ENVIAR NUEVO MENSAJE
+            stopAudio();
 
             appendMessage(message, 'user-message');
             inputField.value = '';
@@ -248,7 +262,6 @@
 
                 loadingDiv.innerText = botReply;
 
-                // Si viene audio del servidor, se reproduce automáticamente
                 if (data.audio) {
                     playAudioResponse(data.audio);
                 }
@@ -270,6 +283,8 @@
         }
 
         function toggleSpeechRecognition() {
+            stopAudio(); // Interrumpir audio al activar micrófono
+
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
                 alert("Reconocimiento de voz no disponible.");
