@@ -25,10 +25,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-# Memoria temporal para el hilo de conversación
-chat_history = []
-
-# Generación de voz argentina masculina joven a velocidad natural (+10%)
+# Generación de voz argentina masculina joven a ritmo natural (+10%)
 async def generate_voice_male(text: str) -> str:
     clean_text = text.replace("*", "").replace("#", "").strip()
     if not clean_text:
@@ -48,16 +45,8 @@ async def serve_index():
         return FileResponse("index.html")
     return "<h1>Servidor Nico IA activo</h1>"
 
-# Endpoint para reiniciar la conversación
-@app.post("/api/reset")
-async def reset_chat():
-    global chat_history
-    chat_history = []
-    return {"status": "ok", "message": "Historial reiniciado"}
-
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
-    global chat_history
     try:
         if not GROQ_API_KEY:
             return {"response": "Falta la API Key en Render.", "reply": "Falta la API Key en Render."}
@@ -65,11 +54,12 @@ async def chat_endpoint(request: Request):
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
         user_location = data.get("location") or "Benito Juárez, Provincia de Buenos Aires, Argentina"
+        history_from_client = data.get("history") or []
         
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Búsqueda web ultra rápida (1 resultado) para no demorar la respuesta
+        # Búsqueda web ultra rápida (1 resultado)
         context_web = ""
         if tavily_client:
             try:
@@ -87,7 +77,7 @@ async def chat_endpoint(request: Request):
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
 
-        # Reglas de personalidad y comportamiento
+        # Prompt con regla estricta de Grados Celsius (°C) y sin "che"
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
@@ -97,8 +87,8 @@ async def chat_endpoint(request: Request):
 
         messages_payload = [{"role": "system", "content": system_prompt}]
         
-        # Mantiene el hilo enviando los últimos 6 mensajes
-        for msg in chat_history[-6:]:
+        # Mantiene el hilo específico de la sesión abierta usando el historial enviado por la APK
+        for msg in history_from_client[-6:]:
             messages_payload.append(msg)
 
         user_content = user_text
@@ -124,9 +114,6 @@ async def chat_endpoint(request: Request):
 
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
-            
-            chat_history.append({"role": "user", "content": user_text})
-            chat_history.append({"role": "assistant", "content": reply_text})
 
             # Generar audio con la voz corregida
             audio_base64 = await generate_voice_male(reply_text)
