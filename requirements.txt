@@ -3,3 +3,5 @@ uvicorn
 requests
 edge-tts
 tavily-python
+reportlab
+fpdf2
