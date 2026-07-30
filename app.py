@@ -35,8 +35,8 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Rotación de modelos si la cuota por minuto de uno se satura
-        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"]
+        # Solo modelos válidos en v1beta
+        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
         
         reply_text = None
 
@@ -69,13 +69,13 @@ async def chat_endpoint(request: Request):
                 print(f"Error {response.status_code} en {model_name}:", res_data)
 
         if not reply_text:
-            reply_text = "¡Hola che! Dame unos 30 segundos que Google me pausó las respuestas por mandar muy rápido. Proba escribirme de nuevo en un toque."
+            reply_text = "¡Hola che! Aguardame unos 30 segundos que Google me limitó temporalmente las respuestas. Probá escribirme de nuevo en un ratito."
 
         return {"response": reply_text, "reply": reply_text}
 
     except Exception as e:
         traceback.print_exc()
-        return {"response": "Tuve un contratiempo temporal al procesar la respuesta. Reintentá en un ratito.", "reply": "Tuve un contratiempo temporal al procesar la respuesta. Reintentá en un ratito."}
+        return {"response": "Tuve un problema temporal. Reintentá en un ratito.", "reply": "Tuve un problema temporal. Reintentá en un ratito."}
 
 if __name__ == "__main__":
     import uvicorn
