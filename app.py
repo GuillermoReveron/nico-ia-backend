@@ -2,6 +2,7 @@ import os
 import io
 import base64
 import requests
+import urllib.parse
 import traceback
 import asyncio
 from fastapi import FastAPI, Request
@@ -44,7 +45,13 @@ async def generate_voice_male(text: str) -> str:
     fp.seek(0)
     return base64.b64encode(fp.read()).decode('utf-8')
 
-# Función robusta en backend para extraer texto de PDF, Word y TXT
+# Función para generar imágenes 100% GRATIS con Pollinations.ai
+def generate_free_image_url(prompt: str) -> str:
+    clean_prompt = urllib.parse.quote(prompt.strip())
+    # Genera imagen de alta calidad sin costo
+    return f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1024&height=1024&nologo=true"
+
+# Extracción de texto de documentos
 def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
     try:
         if "," in file_b64:
@@ -122,19 +129,29 @@ async def chat_endpoint(request: Request):
         user_image_b64 = data.get("image") or ""
         file_b64 = data.get("file_b64") or ""
         filename = data.get("filename") or "documento"
-        extracted_text_client = data.get("extracted_text") or ""
         
-        if not user_text and not user_image_b64 and not file_b64 and not extracted_text_client:
+        if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # Procesamiento prioritario de documentos en Python
+        # Detección de pedido de generación de imagen
+        image_keywords = ["generar imagen", "crear imagen", "dibujar", "haceme una foto de", "crear foto de", "dibujame"]
+        is_image_request = any(kw in user_text.lower() for kw in image_keywords)
+
+        if is_image_request:
+            img_url = generate_free_image_url(user_text)
+            reply_text = f"¡De una! Acá tenés la imagen que me pediste:\n\n![Imagen Generada]({img_url})"
+            audio_base64 = await generate_voice_male("¡De una! Acá te generé la imagen que me pediste.")
+            return {
+                "response": reply_text,
+                "reply": reply_text,
+                "audio": audio_base64
+            }
+
         document_context = ""
         if file_b64:
             extracted = extract_text_from_file_b64(file_b64, filename)
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:5000]}"
-        elif extracted_text_client:
-            document_context = f"\n\nCONTENIDO DEL DOCUMENTO ({filename}):\n{extracted_text_client[:5000]}"
 
         context_web = ""
         if tavily_client and user_text:
@@ -157,7 +174,8 @@ async def chat_endpoint(request: Request):
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
             "Mantené la lógica estricta del diálogo. Si informás la temperatura o el clima, usá SIEMPRE grados Celsius (°C), nunca Fahrenheit. "
-            "NO uses la palabra 'che'. Si el usuario subió un documento, analizá el texto provisto y hacé el resumen o respuesta correspondiente directamente sin pedir nada adicional."
+            "NO uses la palabra 'che'. Si el usuario subió un documento, analizalo directamente. "
+            "Si el usuario pide generar un informe en PDF, confirmale que se lo dejaste listo para descargar."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
