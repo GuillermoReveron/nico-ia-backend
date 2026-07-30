@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Nico IA</title>
+    <!-- Librerías de procesamiento de PDFs y Word directamente en el navegador -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.4.2/mammoth.browser.min.js"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -27,7 +30,7 @@
             position: relative;
         }
 
-        #sidebar-overlay {
+        #sidebar-overlay, #camera-modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
@@ -57,6 +60,42 @@
 
         #sidebar.open { left: 0; }
         #sidebar-overlay.open { display: block; opacity: 1; }
+        #camera-modal-overlay.open { display: flex; opacity: 1; align-items: center; justify-content: center; }
+
+        /* Modal para elegir tipo de captura */
+        .modal-box {
+            background: #121824;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 20px;
+            width: 85%;
+            max-width: 320px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 102;
+        }
+
+        .modal-title {
+            color: #00f2fe;
+            font-size: 1rem;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        .modal-btn {
+            background: #1a2332;
+            color: white;
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            cursor: pointer;
+        }
 
         .sidebar-header {
             padding: 16px;
@@ -250,7 +289,6 @@
             100% { transform: scale(1.15); }
         }
 
-        /* Barra de entrada compacta para evitar desbordes */
         #input-container {
             display: flex;
             align-items: center;
@@ -310,7 +348,7 @@
             flex-shrink: 0;
         }
 
-        #file-input, #camera-direct-input, #gallery-input { display: none; }
+        #file-input, #camera-input-photo, #camera-input-video, #gallery-input { display: none; }
     </style>
 </head>
 <body>
@@ -327,6 +365,16 @@
         <div class="sessions-list" id="sessions-list"></div>
     </div>
 
+    <!-- Modal de opciones para la Cámara -->
+    <div id="camera-modal-overlay" onclick="closeCameraModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <div class="modal-title">Seleccionar Opción</div>
+            <button class="modal-btn" onclick="openCameraPhoto()">📸 Sacar Foto con Cámara</button>
+            <button class="modal-btn" onclick="openCameraVideo()">🎥 Grabar Video</button>
+            <button class="modal-btn" onclick="openGallery()">🖼️ Buscar en Galería</button>
+        </div>
+    </div>
+
     <header>
         <button class="menu-btn" onclick="toggleSidebar()" title="Ver historial">☰</button>
         <div class="header-title">Nico IA</div>
@@ -340,25 +388,22 @@
     </div>
 
     <div id="input-container">
-        <!-- 1. Documentos -->
+        <!-- Documentos -->
         <button class="action-btn" onclick="document.getElementById('file-input').click()" title="Adjuntar Documento">
             <svg viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.48-2.02-4.5-4.5-4.5S6 2.52 6 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-0.5z"/></svg>
         </button>
         <input type="file" id="file-input" accept=".txt,.pdf,.doc,.docx,.csv,.json" onchange="handleDocumentSelect(event)">
 
-        <!-- 2. Cámara (Activador directo de cámara en vivo) -->
-        <button class="action-btn" onclick="triggerCamera()" title="Sacar Foto">
+        <!-- Botón Cámara (Abre el Modal para elegir) -->
+        <button class="action-btn" onclick="openCameraModal()" title="Cámara / Galería">
             <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
-        <input type="file" id="camera-direct-input" accept="image/*" capture="camera" onchange="handleMediaSelected(event)">
 
-        <!-- 3. Galería -->
-        <button class="action-btn" onclick="document.getElementById('gallery-input').click()" title="Buscar en Galería">
-            <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
-        </button>
+        <input type="file" id="camera-input-photo" accept="image/*" capture="user" onchange="handleMediaSelected(event)">
+        <input type="file" id="camera-input-video" accept="video/*" capture="user" onchange="handleMediaSelected(event)">
         <input type="file" id="gallery-input" accept="image/*,video/*" onchange="handleMediaSelected(event)">
 
-        <!-- 4. Micrófono -->
+        <!-- Micrófono -->
         <button class="action-btn" id="mic-btn" onclick="toggleSpeechRecognition()">
             <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
         </button>
@@ -373,13 +418,17 @@
     <audio id="audio-player" style="display:none;"></audio>
 
     <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
         const orb = document.getElementById('ai-orb');
         const audioPlayer = document.getElementById('audio-player');
         let recognition = null;
         let isListening = false;
         let userLocation = "Benito Juárez, Provincia de Buenos Aires, Argentina";
         let selectedBase64Image = "";
-        let attachedFileContent = "";
+        let selectedFileB64 = "";
+        let selectedFilename = "";
+        let extractedText = "";
 
         let currentSessionId = localStorage.getItem('nico_current_session') || 'session_' + Date.now();
         let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
@@ -400,10 +449,27 @@
             }, (err) => console.log("GPS por defecto"));
         }
 
-        function triggerCamera() {
-            const camInput = document.getElementById('camera-direct-input');
-            camInput.value = ''; // Reset
-            camInput.click();
+        function openCameraModal() {
+            document.getElementById('camera-modal-overlay').classList.add('open');
+        }
+
+        function closeCameraModal(e) {
+            document.getElementById('camera-modal-overlay').classList.remove('open');
+        }
+
+        function openCameraPhoto() {
+            closeCameraModal();
+            document.getElementById('camera-input-photo').click();
+        }
+
+        function openCameraVideo() {
+            closeCameraModal();
+            document.getElementById('camera-input-video').click();
+        }
+
+        function openGallery() {
+            closeCameraModal();
+            document.getElementById('gallery-input').click();
         }
 
         function saveSessions() {
@@ -503,21 +569,42 @@
             const reader = new FileReader();
             reader.onload = function(e) {
                 selectedBase64Image = e.target.result;
-                appendMessageToUI(`📷 Foto/Video listo: ${file.name}`, 'user-message', selectedBase64Image);
+                appendMessageToUI(`📷 Archivo listo: ${file.name}`, 'user-message', selectedBase64Image);
             };
             reader.readAsDataURL(file);
         }
 
-        function handleDocumentSelect(event) {
+        // Extracción directa de texto para PDF, Word y TXT
+        async function handleDocumentSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
 
+            selectedFilename = file.name;
+            extractedText = "";
+            const ext = file.name.toLowerCase().split('.').pop();
+
+            if (ext === 'pdf') {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    extractedText += textContent.items.map(item => item.str).join(' ') + '\n';
+                }
+            } else if (ext === 'docx' || ext === 'doc') {
+                const arrayBuffer = await file.arrayBuffer();
+                const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                extractedText = result.value;
+            } else {
+                extractedText = await file.text();
+            }
+
             const reader = new FileReader();
             reader.onload = function(e) {
-                attachedFileContent = e.target.result;
+                selectedFileB64 = e.target.result;
                 appendMessageToUI(`📄 Documento adjuntado: ${file.name}`, 'user-message');
             };
-            reader.readAsText(file);
+            reader.readAsDataURL(file);
         }
 
         function stopAudio() {
@@ -542,12 +629,10 @@
             const inputField = document.getElementById('user-input');
             let message = inputField.value.trim();
             
-            if (!message && !selectedBase64Image && !attachedFileContent) return;
+            if (!message && !selectedBase64Image && !selectedFileB64) return;
             
-            if (attachedFileContent) {
-                const docText = attachedFileContent.substring(0, 3000);
-                message = (message || "Analizá o resumí este archivo") + "\n\nTEXTO DEL DOCUMENTO:\n" + docText;
-                attachedFileContent = "";
+            if (!message && (selectedFileB64 || extractedText)) {
+                message = `Hacé un resumen claro del archivo ${selectedFilename}.`;
             }
 
             if (!message && selectedBase64Image) {
@@ -571,7 +656,14 @@
             appendMessageToUI(message, 'user-message', selectedBase64Image);
             
             const imageToSend = selectedBase64Image;
+            const fileToSend = selectedFileB64;
+            const filenameToSend = selectedFilename;
+            const textToSend = extractedText;
+
             selectedBase64Image = "";
+            selectedFileB64 = "";
+            selectedFilename = "";
+            extractedText = "";
             inputField.value = '';
 
             const loadingDiv = appendMessageToUI('Pensando...', 'bot-message');
@@ -589,6 +681,9 @@
                         message: message,
                         location: userLocation,
                         image: imageToSend,
+                        file_b64: fileToSend,
+                        filename: filenameToSend,
+                        extracted_text: textToSend,
                         session_id: currentSessionId,
                         history: historyPayload
                     })
