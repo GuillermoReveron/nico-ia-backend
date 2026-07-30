@@ -5,16 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Nico IA</title>
     <style>
-        /* Bloqueo estricto de márgenes y scroll horizontal */
+        /* Bloqueo estricto de pantalla para evitar desplazamientos y descuadres */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         html, body {
             width: 100%;
             height: 100%;
-            margin: 0;
-            padding: 0;
             overflow-x: hidden;
             background-color: #121212;
             color: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
 
         body {
@@ -33,6 +38,7 @@
             flex-shrink: 0;
         }
 
+        /* Contenedor principal de mensajes */
         #chat-container {
             flex: 1;
             padding: 12px;
@@ -41,7 +47,6 @@
             flex-direction: column;
             gap: 10px;
             width: 100%;
-            box-sizing: border-box;
         }
 
         .message {
@@ -71,19 +76,18 @@
             padding: 8px 10px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
             border-top: 1px solid #2a2a2a;
             width: 100%;
-            box-sizing: border-box;
             flex-shrink: 0;
         }
 
         input[type="text"] {
             flex: 1;
-            min-width: 0; /* Evita que el input empuje la pantalla */
+            min-width: 0;
             background-color: #2a2a2a;
             border: none;
-            padding: 10px 14px;
+            padding: 10px 12px;
             color: #ffffff;
             border-radius: 20px;
             outline: none;
@@ -93,20 +97,41 @@
         .icon-btn {
             background: none;
             border: none;
-            font-size: 1.3rem;
+            font-size: 1.25rem;
             cursor: pointer;
             padding: 4px;
-            flex-shrink: 0; /* No se deforman ni mueven el layout */
+            flex-shrink: 0;
             display: flex;
             align-items: center;
             justify-content: center;
+            color: #4da6ff;
+            transition: transform 0.1s ease;
         }
 
-        #cam-btn { color: #4da6ff; }
-        #send-btn { color: #007acc; }
+        .icon-btn:active {
+            transform: scale(0.9);
+        }
 
-        /* Ocultar input nativo de archivos */
-        #file-input { display: none; }
+        #send-btn {
+            color: #007acc;
+            font-weight: bold;
+        }
+
+        /* Indicador de micrófono encendido */
+        .recording {
+            color: #ff4444 !important;
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { opacity: 1; }
+            to { opacity: 0.4; }
+        }
+
+        /* Inputs de archivo ocultos */
+        .hidden-input {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -117,27 +142,41 @@
         <div class="message bot-msg">¡Hola! Soy Nico IA. ¿En qué te puedo ayudar hoy?</div>
     </div>
 
+    <!-- Barra inferior con todos las herramientas -->
     <div id="input-container">
-        <!-- BOTÓN DE CÁMARA (Recuperado y fijo) -->
-        <button class="icon-btn" id="cam-btn" title="Tomar foto / Cargar imagen">📷</button>
+        <!-- 1. Botón Cámara Nativa -->
+        <button class="icon-btn" id="cam-btn" title="Tomar foto">📷</button>
         
-        <!-- Campo de texto ajustado -->
+        <!-- 2. Botón Adjuntar Archivo/Galería -->
+        <button class="icon-btn" id="attach-btn" title="Adjuntar archivo">📎</button>
+        
+        <!-- 3. Botón Micrófono / Reconocimiento de voz -->
+        <button class="icon-btn" id="mic-btn" title="Dictar mensaje">🎙️</button>
+        
+        <!-- Campo de Texto -->
         <input type="text" id="user-input" placeholder="Escribí un mensaje..." />
         
-        <!-- Botón Enviar -->
+        <!-- 4. Botón Enviar -->
         <button class="icon-btn" id="send-btn" title="Enviar">➔</button>
     </div>
 
-    <!-- Trigger de la Cámara nativa del teléfono -->
-    <input type="file" id="file-input" accept="image/*" capture="environment">
+    <!-- Triggers de archivos ocultos -->
+    <input type="file" id="camera-file-input" class="hidden-input" accept="image/*" capture="environment">
+    <input type="file" id="attach-file-input" class="hidden-input" accept="*/*">
 
     <script>
         const chatContainer = document.getElementById('chat-container');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
+        
         const camBtn = document.getElementById('cam-btn');
-        const fileInput = document.getElementById('file-input');
+        const attachBtn = document.getElementById('attach-btn');
+        const micBtn = document.getElementById('mic-btn');
 
+        const cameraFileInput = document.getElementById('camera-file-input');
+        const attachFileInput = document.getElementById('attach-file-input');
+
+        // Función para agregar mensajes al chat
         function addMessage(text, sender) {
             const msgDiv = document.createElement('div');
             msgDiv.classList.add('message', sender === 'user' ? 'user-msg' : 'bot-msg');
@@ -146,6 +185,7 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
+        // Función para enviar texto al servidor
         async function sendMessage() {
             const text = userInput.value.trim();
             if (!text) return;
@@ -163,23 +203,86 @@
                 const data = await response.json();
                 addMessage(data.reply || data.response || "No recibí respuesta.", 'bot');
             } catch (err) {
-                addMessage("Error de conexión con Nico IA.", 'bot');
+                addMessage("Error de conexión con el servidor.", 'bot');
             }
         }
 
         sendBtn.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
 
-        // Evento para abrir la cámara/galería del celular al tocar 📷
+        // 📷 1. Acción de la CÁMARA
         camBtn.addEventListener('click', () => {
-            fileInput.click();
+            cameraFileInput.click();
         });
 
-        fileInput.addEventListener('change', (e) => {
+        cameraFileInput.addEventListener('change', (e) => {
             if (e.target.files && e.target.files[0]) {
-                addMessage("📷 [Foto seleccionada lista para procesar]", 'user');
+                const fileName = e.target.files[0].name;
+                addMessage(`📷 Foto capturada: ${fileName}`, 'user');
             }
         });
+
+        // 📎 2. Acción de ADJUNTAR ARCHIVO / GALERÍA
+        attachBtn.addEventListener('click', () => {
+            attachFileInput.click();
+        });
+
+        attachFileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const fileName = e.target.files[0].name;
+                addMessage(`📎 Archivo adjunto: ${fileName}`, 'user');
+            }
+        });
+
+        // 🎙️ 3. Acción del MICRÓFONO (Reconocimiento de voz nativo Web Speech API)
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'es-AR';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            let isRecording = false;
+
+            micBtn.addEventListener('click', () => {
+                if (!isRecording) {
+                    recognition.start();
+                    micBtn.classList.add('recording');
+                    userInput.placeholder = "Escuchando...";
+                    isRecording = true;
+                } else {
+                    recognition.stop();
+                    micBtn.classList.remove('recording');
+                    userInput.placeholder = "Escribí un mensaje...";
+                    isRecording = false;
+                }
+            });
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                userInput.value = transcript;
+                micBtn.classList.remove('recording');
+                userInput.placeholder = "Escribí un mensaje...";
+                isRecording = false;
+            };
+
+            recognition.onerror = () => {
+                micBtn.classList.remove('recording');
+                userInput.placeholder = "Escribí un mensaje...";
+                isRecording = false;
+            };
+
+            recognition.onend = () => {
+                micBtn.classList.remove('recording');
+                userInput.placeholder = "Escribí un mensaje...";
+                isRecording = false;
+            };
+        } else {
+            micBtn.addEventListener('click', () => {
+                alert("El reconocimiento de voz no está soportado en este navegador.");
+            });
+        }
     </script>
 </body>
 </html>
