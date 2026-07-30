@@ -35,8 +35,8 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún mensaje de texto.", "reply": "No recibí ningún mensaje de texto."}
 
-        # Petición HTTP directa a Google Gemini (API v1)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # Intentar llamada con parámetro ?key= primero, y si es token con Authorization Header
+        url_with_key = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
             "contents": [{
@@ -47,7 +47,28 @@ async def chat_endpoint(request: Request):
             }
         }
 
-        response = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
+        # Probar envío con autenticación por Header (para tokens AQ...) y fallback por Query Param
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {GEMINI_API_KEY}"
+        }
+
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+
+        # Si no acepta Bearer Token, probamos por Query Parameter sin Bearer
+        if response.status_code == 401:
+            response = requests.post(
+                url_with_key,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=30
+            )
+
         res_data = response.json()
 
         if response.status_code != 200:
@@ -55,7 +76,6 @@ async def chat_endpoint(request: Request):
             error_msg = res_data.get("error", {}).get("message", "Error en la API de Google")
             raise HTTPException(status_code=response.status_code, detail=error_msg)
 
-        # Extraer texto de la respuesta
         reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
         return {"response": reply_text, "reply": reply_text}
 
