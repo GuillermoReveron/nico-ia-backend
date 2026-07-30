@@ -1,9 +1,9 @@
 import os
+import requests
 import traceback
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-import google.generativeai as genai
 
 app = FastAPI()
 
@@ -16,9 +16,6 @@ app.add_middleware(
 )
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -38,40 +35,50 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Lista de modelos estables garantizados
-        candidate_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
+        # Modelos válidos en la API v1
+        models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
         
-        response_text = None
-        last_error = None
+        reply_text = None
+        last_error_details = None
 
-        for m_name in candidate_models:
-            try:
-                print(f"--- PROBANDO MODELO: {m_name} ---")
-                model = genai.GenerativeModel(
-                    model_name=m_name,
-                    system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
-                )
-                res = model.generate_content(user_text)
-                if res and res.text:
-                    response_text = res.text
-                    print(f"--- ÉXITO CON MODELO: {m_name} ---")
+        for model_name in models_to_try:
+            url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+            
+            payload = {
+                "contents": [{
+                    "parts": [{"text": user_text}]
+                }],
+                "systemInstruction": {
+                    "parts": [{"text": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."}]
+                }
+            }
+
+            headers = {"Content-Type": "application/json"}
+            print(f"--- PROBANDO HTTP DIRECTO CON: {model_name} ---")
+            
+            res = requests.post(url, json=payload, headers=headers, timeout=30)
+            res_data = res.json()
+
+            if res.status_code == 200:
+                try:
+                    reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                    print(f"--- ÉXITO CON: {model_name} ---")
                     break
-            except Exception as err:
-                print(f"Falló {m_name}: {err}")
-                last_error = err
-                continue
+                except KeyError:
+                    continue
+            else:
+                print(f"Falló {model_name} ({res.status_code}):", res_data)
+                last_error_details = res_data
 
-        if not response_text:
-            if last_error:
-                raise last_error
-            raise RuntimeError("Ningún modelo de Gemini pudo procesar la solicitud.")
+        if not reply_text:
+            error_msg = last_error_details.get("error", {}).get("message", "Error al conectar con Gemini") if last_error_details else "No se pudo obtener respuesta."
+            raise HTTPException(status_code=500, detail=error_msg)
 
-        return {"response": response_text, "reply": response_text}
+        return {"response": reply_text, "reply": reply_text}
 
     except Exception as e:
-        print("--- DETALLE DEL ERROR REAL ---")
+        print("--- ERROR EN CHAT ENDPOINT ---")
         traceback.print_exc()
-        # Devolver el error exacto en el JSON para no andar a ciegas
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
