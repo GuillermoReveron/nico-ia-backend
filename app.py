@@ -82,10 +82,9 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# Búsqueda meteo directa sin fallas (Open-Meteo API pública para Benito Juárez)
+# Búsqueda metereológica directa sin fallas (Open-Meteo para Benito Juárez)
 def get_weather_direct() -> str:
     try:
-        # Coordenadas exactas de Benito Juárez (-37.67, -59.80)
         url = "https://api.open-meteo.com/v1/forecast?latitude=-37.67&longitude=-59.80&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FArgentina%2FBuenos_Aires"
         res = requests.get(url, timeout=4)
         if res.status_code == 200:
@@ -149,6 +148,16 @@ async def chat_endpoint(request: Request):
         if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
+        # --- FRENO DE MANO PARA AGRADECIMIENTOS Y CORTESÍAS ---
+        # Si el usuario dice 'no', 'gracias', 'no gracias', etc., responde directo sin memoria ni búsquedas raras.
+        clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
+        polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
+        
+        if clean_user in polite_negatives:
+            reply_text = "¡De nada! Cualquier otra cosa que necesites, decime."
+            audio_base64 = await generate_voice_male(reply_text)
+            return {"response": reply_text, "reply": reply_text, "audio": audio_base64}
+
         # Generación de imagen
         image_keywords = ["generar imagen", "crear imagen", "dibujar", "haceme una foto de", "crear foto de", "dibujame"]
         is_image_request = any(kw in user_text.lower() for kw in image_keywords)
@@ -175,12 +184,10 @@ async def chat_endpoint(request: Request):
         is_weather = any(w in user_text.lower() for w in weather_triggers)
 
         if is_weather:
-            # Primero probamos la API meteorológica directa (Garantizada)
             direct_weather = get_weather_direct()
             if direct_weather:
                 context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DEL TIEMPO:\n{direct_weather}\n"
 
-        # Si no es clima o si Tavily está activo para noticias/otros datos
         if not context_web and tavily_client and len(user_text.strip()) > 3:
             try:
                 search_query = f"{user_text} en {user_location} 2026"
@@ -197,6 +204,7 @@ async def chat_endpoint(request: Request):
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
             "Mantené la lógica estricta del diálogo. Si disponés de datos de temperatura o clima en el prompt, respondé con amabilidad dando los grados Celsius exactos. "
+            "NO traigas temas de turismo o noticias viejas a menos que el usuario lo pida explícitamente. "
             "NO uses la palabra 'che'. Si el usuario subió un documento, analizalo directamente."
         )
 
