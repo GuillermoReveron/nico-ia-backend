@@ -3,10 +3,11 @@ import io
 import base64
 import requests
 import traceback
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from gtts import gTTS
+import edge_tts
 from tavily import TavilyClient
 
 app = FastAPI()
@@ -24,8 +25,22 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-# Memoria temporal simple para mantener el hilo del chat
 chat_history = []
+
+# Función asíncrona para generar voz de varón joven/adolescente argentino más rápida (+20% velocidad)
+async def generate_voice_male(text: str) -> str:
+    clean_text = text.replace("*", "").replace("#", "").strip()
+    if not clean_text:
+        return ""
+    
+    # Voice argentina masculina: es-AR-TomasNeural (ritmo acelerado)
+    communicate = edge_tts.Communicate(clean_text, "es-AR-TomasNeural", rate="+20%")
+    fp = io.BytesIO()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            fp.write(chunk["data"])
+    fp.seek(0)
+    return base64.b64encode(fp.read()).decode('utf-8')
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -42,39 +57,41 @@ async def chat_endpoint(request: Request):
 
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
+        user_location = data.get("location") or "Benito Juárez, Provincia de Buenos Aires, Argentina"
         
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Búsqueda web optimizada con contexto temporal (Año 2026)
+        # Búsqueda web contextualizada con la ubicación real del usuario
         context_web = ""
         if tavily_client:
             try:
-                search_query = f"{user_text} 2026"
+                search_query = user_text
+                if any(w in user_text.lower() for w in ["clima", "temperatura", "tiempo", "grados", "noticias", "dólar"]):
+                    search_query = f"{user_text} en {user_location} 2026"
+
                 search_result = tavily_client.search(query=search_query, max_results=3, search_depth="basic")
                 results = search_result.get("results", [])
                 
                 if results:
-                    context_web = "\n\nINFORMACIÓN ACTUALIZADA DE LA WEB (AÑO 2026):\n"
+                    context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DE LA WEB PARA {user_location.upper()} (AÑO 2026):\n"
                     for res in results:
                         context_web += f"- {res.get('title')}: {res.get('content')}\n"
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
 
         system_prompt = (
-            "Sos Nico IA, un asistente virtual argentino, fluido, inteligente y cercano. "
-            "Estamos en el año 2026. Mantené el hilo de la conversación recordando los mensajes anteriores. "
-            "Respondé de forma concisa, clara y directa, utilizando la información web provista para datos actuales."
+            f"Sos Nico IA, un asistente virtual argentino adolescente de 18 años, simpático, ágil y cancha. "
+            f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
+            "Respondé de forma SÚPER BREVE, directa y fluida (máximo 2 o 3 oraciones cortas). "
+            "Usá modismos argentinos naturales sin exagerar."
         )
 
-        # Armar el paquete de mensajes incluyendo el historial
         messages_payload = [{"role": "system", "content": system_prompt}]
         
-        # Agregar los últimos 6 mensajes del historial para no saturar memoria
         for msg in chat_history[-6:]:
             messages_payload.append(msg)
 
-        # Mensaje actual del usuario
         user_content = user_text
         if context_web:
             user_content += context_web
@@ -85,8 +102,8 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 250,
-            "temperature": 0.4
+            "max_tokens": 200,
+            "temperature": 0.5
         }
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
@@ -99,21 +116,11 @@ async def chat_endpoint(request: Request):
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
             
-            # Guardar en el historial la interacción actual
             chat_history.append({"role": "user", "content": user_text})
             chat_history.append({"role": "assistant", "content": reply_text})
 
-            # Generar audio MP3 de la respuesta
-            audio_base64 = ""
-            try:
-                clean_speech = reply_text.replace("*", "").replace("#", "").strip()
-                tts = gTTS(text=clean_speech, lang='es', tld='com.ar')
-                fp = io.BytesIO()
-                tts.write_to_fp(fp)
-                fp.seek(0)
-                audio_base64 = base64.b64encode(fp.read()).decode('utf-8')
-            except Exception as e:
-                print("Error TTS:", e)
+            # Generar voz masculina joven acelerada
+            audio_base64 = await generate_voice_male(reply_text)
 
             return {
                 "response": reply_text, 
