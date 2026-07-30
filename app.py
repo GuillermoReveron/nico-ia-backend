@@ -1,5 +1,4 @@
 import os
-import time
 import requests
 import traceback
 from fastapi import FastAPI, HTTPException, Request
@@ -28,68 +27,42 @@ async def serve_index():
 async def chat_endpoint(request: Request):
     try:
         if not GEMINI_API_KEY:
-            raise ValueError("No se configuró GEMINI_API_KEY en Render.")
+            return {"response": "Falta la GEMINI_API_KEY en Render.", "reply": "Falta la GEMINI_API_KEY en Render."}
 
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
         
         if not user_text:
-            return {"response": "No recibí texto.", "reply": "No recibí texto."}
+            return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Modelos válidos en la capa gratuita actual
-        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
+        # Conexión directa a la API v1beta con gemini-2.0-flash
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         
-        reply_text = None
-        last_error_details = None
-
-        for model_name in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
-            
-            payload = {
-                "contents": [{
-                    "parts": [{"text": user_text}]
-                }],
-                "systemInstruction": {
-                    "parts": [{"text": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."}]
-                }
+        payload = {
+            "contents": [{
+                "parts": [{"text": user_text}]
+            }],
+            "systemInstruction": {
+                "parts": [{"text": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."}]
             }
+        }
 
-            headers = {"Content-Type": "application/json"}
-            print(f"--- PROBANDO HTTP DIRECTO CON: {model_name} ---")
-            
-            # Reintento si hay un 429 por cuota por minuto
-            for attempt in range(2):
-                res = requests.post(url, json=payload, headers=headers, timeout=30)
-                res_data = res.json()
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        res_data = response.json()
 
-                if res.status_code == 200:
-                    try:
-                        reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                        print(f"--- ÉXITO CON: {model_name} ---")
-                        break
-                    except KeyError:
-                        break
-                elif res.status_code == 429:
-                    print(f"Cuota temporal superada en {model_name}. Esperando 5s... (Intento {attempt + 1})")
-                    time.sleep(5)
-                else:
-                    print(f"Falló {model_name} ({res.status_code}):", res_data)
-                    last_error_details = res_data
-                    break
-            
-            if reply_text:
-                break
-
-        if not reply_text:
-            error_msg = last_error_details.get("error", {}).get("message", "Superada la cuota de la API o modelo no disponible.") if last_error_details else "No se pudo obtener respuesta."
-            raise HTTPException(status_code=500, detail=error_msg)
-
-        return {"response": reply_text, "reply": reply_text}
+        if response.status_code == 200:
+            reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+            return {"response": reply_text, "reply": reply_text}
+        else:
+            print("--- ERROR GOOGLE API ---", res_data)
+            error_msg = res_data.get("error", {}).get("message", "Error al procesar con Gemini")
+            return {"response": f"Error ({response.status_code}): {error_msg}", "reply": f"Error: {error_msg}"}
 
     except Exception as e:
         print("--- ERROR EN CHAT ENDPOINT ---")
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"response": f"Error de servidor: {str(e)}", "reply": f"Error de servidor: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn
