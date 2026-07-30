@@ -34,7 +34,7 @@ async def generate_voice_male(text: str) -> str:
         return ""
     
     # Voice argentina masculina: es-AR-TomasNeural (ritmo acelerado)
-    communicate = edge_tts.Communicate(clean_text, "es-AR-TomasNeural", rate="+20%")
+    communicate = edge_tts.Communicate(clean_text, "es-AR-TomasNeural", rate="+10%")
     fp = io.BytesIO()
     async for chunk in communicate.stream():
         if chunk["type"] == "audio":
