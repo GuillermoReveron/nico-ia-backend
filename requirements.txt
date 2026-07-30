@@ -1,5 +1,5 @@
 fastapi
 uvicorn
 requests
-gTTS
+edge-tts
 tavily-python
