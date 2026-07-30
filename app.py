@@ -8,7 +8,7 @@ import asyncio
 import re
 import random
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import edge_tts
 from tavily import TavilyClient
@@ -33,7 +33,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-# Voz argentina masculina joven (+10% velocidad)
+# Voz argentina masculina joven
 async def generate_voice_male(text: str) -> str:
     clean_text = text.replace("*", "").replace("#", "").replace("!", "").strip()
     if not clean_text:
@@ -47,7 +47,7 @@ async def generate_voice_male(text: str) -> str:
     fp.seek(0)
     return base64.b64encode(fp.read()).decode('utf-8')
 
-# Generar o Editar imágenes con Pollinations AI
+# Generar imágenes gratis
 def generate_image_engine(prompt: str) -> str:
     clean_prompt = prompt.lower()
     for word in ["generar", "generame", "crear", "creame", "dibujar", "dibujame", "haceme", "editar", "editame", "cambiar", "cambiame", "una", "un", "imagen", "foto", "de", "del", "la", "el"]:
@@ -60,7 +60,7 @@ def generate_image_engine(prompt: str) -> str:
     encoded = urllib.parse.quote(clean_prompt)
     return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true&seed={seed}"
 
-# Extracción limpia de texto de documentos
+# Extracción de texto de documentos
 def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
     try:
         if "," in file_b64:
@@ -92,7 +92,7 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# Pronóstico directo
+# Clima directo
 def get_weather_direct() -> str:
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=-37.67&longitude=-59.80&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FArgentina%2FBuenos_Aires"
@@ -105,48 +105,60 @@ def get_weather_direct() -> str:
             rain = daily.get("precipitation_probability_max", [None, None])[1]
             return f"DATOS CLIMA EN BENITO JUÁREZ PARA MAÑANA: Máxima {max_temp}°C, Mínima {min_temp}°C, Lluvia {rain}%."
     except Exception as e:
-        print("Error metereológico directo:", e)
+        print("Error meteorológico directo:", e)
     return ""
 
-# Creador de PDF robusto para descargas en móviles
-def create_pdf_bytes(text_content: str, filename: str = "Resumen_Estudio.pdf") -> str:
-    try:
-        buffer = io.BytesIO()
-        p = canvas.Canvas(buffer, pagesize=letter)
-        p.setFont("Helvetica-Bold", 14)
-        p.drawString(40, 750, "Documento Resumen - Nico IA")
-        p.line(40, 740, 550, 740)
-        
-        p.setFont("Helvetica", 10)
-        y = 710
-        clean_lines = text_content.replace("#", "").replace("*", "").split('\n')
-        
-        for line in clean_lines:
-            while len(line) > 80:
-                p.drawString(40, y, line[:80])
-                line = line[80:]
-                y -= 15
-                if y < 40:
-                    p.showPage()
-                    y = 750
-            p.drawString(40, y, line)
+# Función que crea los bytes puros de un PDF
+def create_pdf_binary(text_content: str) -> bytes:
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    p.setFont("Helvetica-Bold", 14)
+    p.drawString(40, 750, "Resumen de Estudio - Nico IA")
+    p.line(40, 740, 550, 740)
+    
+    p.setFont("Helvetica", 10)
+    y = 710
+    clean_lines = text_content.replace("#", "").replace("*", "").split('\n')
+    
+    for line in clean_lines:
+        while len(line) > 80:
+            p.drawString(40, y, line[:80])
+            line = line[80:]
             y -= 15
             if y < 40:
                 p.showPage()
                 y = 750
-                
-        p.save()
-        buffer.seek(0)
-        return base64.b64encode(buffer.getvalue()).decode('utf-8')
-    except Exception as e:
-        print("Error generando PDF:", e)
-        return ""
+        p.drawString(40, y, line)
+        y -= 15
+        if y < 40:
+            p.showPage()
+            y = 750
+            
+    p.save()
+    buffer.seek(0)
+    return buffer.getvalue()
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     if os.path.exists("index.html"):
         return FileResponse("index.html")
     return "<h1>Servidor Nico IA activo</h1>"
+
+# ENDPOINT PARA DESCARGA DIRECTA DE PDFS EN CELULARES
+@app.post("/api/download-pdf")
+async def download_pdf_endpoint(request: Request):
+    try:
+        data = await request.json()
+        content = data.get("content") or "Sin contenido."
+        pdf_bytes = create_pdf_binary(content)
+        
+        headers = {
+            'Content-Disposition': 'attachment; filename="Resumen_Estudio_Nico_IA.pdf"'
+        }
+        return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+    except Exception as e:
+        print("Error descargando PDF:", e)
+        return {"error": "No se pudo generar el archivo."}
 
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
@@ -165,7 +177,7 @@ async def chat_endpoint(request: Request):
         if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # 1. FRENO DE MANO PARA CORTESÍAS
+        # 1. FRENO DE MANO CORTESÍAS
         clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
         polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
         
@@ -174,35 +186,34 @@ async def chat_endpoint(request: Request):
             audio_base64 = await generate_voice_male(reply_text)
             return {"response": reply_text, "reply": reply_text, "audio": audio_base64}
 
-        # 2. DETECCIÓN Y EDITOR / GENERADOR DE IMÁGENES
+        # 2. GENERACIÓN DE IMÁGENES
         image_triggers = [
             r"generar.*imagen", r"crear.*imagen", r"hacer.*imagen", r"haceme.*imagen",
             r"generar.*foto", r"crear.*foto", r"hacer.*foto", r"haceme.*foto",
             r"dibujar", r"dibujame", r"hazme.*dibujo", r"graficame", r"haz.*un.*dibujo",
-            r"imagen de", r"foto de", r"dibujo de", r"cambiar.*pelo", r"color.*pelo",
-            r"modificar.*imagen", r"editam.*imagen", r"editar.*foto", r"ponel.*pelo"
+            r"imagen de", r"foto de", r"dibujo de"
         ]
         
         is_image_request = any(re.search(pattern, user_text.lower()) for pattern in image_triggers)
 
-        if is_image_request or (user_image_b64 and any(w in user_text.lower() for w in ["pelo", "color", "cambia", "pone", "edita", "fondo"])):
+        if is_image_request:
             img_url = generate_image_engine(user_text)
-            reply_text = f"¡De una! Acá tenés la imagen lista:\n\n![Imagen Procesada]({img_url})"
-            audio_base64 = await generate_voice_male("¡De una! Acá te procesé la imagen que me pediste.")
+            reply_text = f"¡De una! Acá tenés la imagen lista:\n\n![Imagen Generada]({img_url})"
+            audio_base64 = await generate_voice_male("¡De una! Acá te generé la imagen que me pediste.")
             return {
                 "response": reply_text,
                 "reply": reply_text,
                 "audio": audio_base64
             }
 
-        # 3. EXTRAER DOCUMENTOS (PDF, DOCX)
+        # 3. EXTRAER DOCUMENTOS
         document_context = ""
         if file_b64:
             extracted = extract_text_from_file_b64(file_b64, filename)
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. CLIMA Y DATOS WEB
+        # 4. CLIMA Y WEB
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
@@ -228,8 +239,8 @@ async def chat_endpoint(request: Request):
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
-            "Mantené la lógica estricta del diálogo. Si el usuario te pide un resumen o estudio de un documento, explicáselo en puntos clave muy claros. "
-            "Si pide PDF, confirmale que se lo adjuntás para descargar. NO usás la palabra 'che'."
+            "Mantené la lógica estricta del diálogo. Si el usuario te pide un resumen de un documento, explicáselo en puntos clave muy claros. "
+            "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar. NO usás la palabra 'che'."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
@@ -243,7 +254,7 @@ async def chat_endpoint(request: Request):
         if context_web:
             user_content += context_web
         if user_image_b64:
-            user_content += "\n[IMAGEN/VIDEO ADJUNTADO POR EL USUARIO PARA ANÁLISIS]"
+            user_content += "\n[IMAGEN/VIDEO ADJUNTADO POR EL USUARIO]"
 
         messages_payload.append({"role": "user", "content": user_content})
 
@@ -265,11 +276,11 @@ async def chat_endpoint(request: Request):
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
 
-            # 6. GENERAR PDF SIEMPRE QUE PIDA RESUMEN O PDF
-            pdf_b64 = ""
+            # Genera la bandera para PDF si es resumen o archivo
+            has_pdf = False
             pdf_triggers = ["pdf", "descargar", "informe", "documento", "estudiar", "resumen"]
             if any(w in user_text.lower() for w in pdf_triggers) or file_b64:
-                pdf_b64 = create_pdf_bytes(reply_text, f"Resumen_Nico_IA.pdf")
+                has_pdf = True
 
             audio_base64 = await generate_voice_male(reply_text)
 
@@ -277,7 +288,7 @@ async def chat_endpoint(request: Request):
                 "response": reply_text, 
                 "reply": reply_text,
                 "audio": audio_base64,
-                "pdf": pdf_b64
+                "has_pdf": has_pdf
             }
         else:
             return {"response": "Error en el servidor.", "reply": "Error en el servidor."}
