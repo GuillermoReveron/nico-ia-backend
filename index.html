@@ -323,10 +323,11 @@
             padding: 10px 14px;
             background: linear-gradient(135deg, #00c6ff, #0072ff);
             color: white;
-            text-decoration: none;
+            border: none;
             border-radius: 10px;
             font-size: 0.9rem;
             font-weight: bold;
+            cursor: pointer;
             box-shadow: 0 4px 10px rgba(0, 198, 255, 0.3);
         }
 
@@ -523,7 +524,6 @@
 
         let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
         
-        // Abre sesión limpia de entrada
         let currentSessionId = 'session_' + Date.now();
         sessions[currentSessionId] = {
             title: "Nueva Charla",
@@ -741,7 +741,7 @@
 
             activeSession.messages.forEach(msg => {
                 const className = msg.sender === 'user' ? 'user-message' : 'bot-message';
-                appendMessageToUI(msg.text, className, msg.image, msg.pdf, msg.video);
+                appendMessageToUI(msg.text, className, msg.image, msg.has_pdf, msg.video);
             });
         }
 
@@ -795,15 +795,32 @@
             audioPlayer.play().catch(e => console.error("Audio error:", e));
         }
 
-        // DESCARGA DIRECTA Y REAL DE PDF EN ANDROID
-        function downloadPdfDirect(b64Pdf, filename = "Resumen_Nico_IA.pdf") {
-            const linkSource = `data:application/pdf;base64,${b64Pdf}`;
-            const downloadLink = document.createElement("a");
-            downloadLink.href = linkSource;
-            downloadLink.download = filename;
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
+        // DESCARGA REAL DE PDF VÍA PETICIÓN DE SERVIDOR
+        async function triggerPdfDownloadFromServer(textContent) {
+            try {
+                const res = await fetch('/api/download-pdf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: textContent })
+                });
+
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'Resumen_Estudio_Nico_IA.pdf';
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    alert("No se pudo descargar el PDF.");
+                }
+            } catch (e) {
+                console.error("Error al descargar PDF:", e);
+                alert("Error al conectar con el servidor para descargar.");
+            }
         }
 
         async function sendMessage() {
@@ -817,7 +834,7 @@
             }
 
             if (!message && selectedBase64Image) {
-                message = "Te envío esta foto para analizar o editar.";
+                message = "Te envío esta foto para analizar.";
             }
 
             if (!message && selectedBase64Video) {
@@ -896,9 +913,9 @@
                 }
 
                 const botMsgObj = { sender: 'bot', text: botReply };
-                if (data.pdf) {
-                    botMsgObj.pdf = data.pdf;
-                    renderPdfButton(loadingDiv, data.pdf);
+                if (data.has_pdf) {
+                    botMsgObj.has_pdf = true;
+                    renderPdfButton(loadingDiv, botReply);
                 }
 
                 activeSession.messages.push(botMsgObj);
@@ -914,16 +931,16 @@
             }
         }
 
-        function renderPdfButton(container, pdfB64) {
+        function renderPdfButton(container, textContent) {
             const btn = document.createElement('button');
             btn.className = 'pdf-download-btn';
             btn.innerHTML = '📄 Descargar Informe PDF';
-            btn.onclick = () => downloadPdfDirect(pdfB64, 'Resumen_Nico_IA.pdf');
+            btn.onclick = () => triggerPdfDownloadFromServer(textContent);
             container.appendChild(document.createElement('br'));
             container.appendChild(btn);
         }
 
-        function appendMessageToUI(text, className, imgData = null, pdfB64 = null, videoData = null) {
+        function appendMessageToUI(text, className, imgData = null, hasPdf = false, videoData = null) {
             const chatContainer = document.getElementById('chat-container');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
@@ -960,8 +977,8 @@
                 messageDiv.appendChild(vidEl);
             }
 
-            if (pdfB64) {
-                renderPdfButton(messageDiv, pdfB64);
+            if (hasPdf) {
+                renderPdfButton(messageDiv, text);
             }
 
             chatContainer.appendChild(messageDiv);
