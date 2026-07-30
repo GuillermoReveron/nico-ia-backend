@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from gtts import gTTS
+from tavily import TavilyClient
 
 app = FastAPI()
 
@@ -19,6 +20,10 @@ app.add_middleware(
 )
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+
+# Inicializar cliente de búsqueda Tavily
+tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -38,12 +43,38 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
+        # Búsqueda Web en Tiempo Real con Tavily
+        context_web = ""
+        if tavily_client:
+            try:
+                print("--- BÚSQUEDA WEB EN TIEMPO REAL INICIADA ---")
+                search_result = tavily_client.search(query=user_text, max_results=3)
+                results = search_result.get("results", [])
+                
+                if results:
+                    context_web = "\n\nINFORMACIÓN ACTUALIZADA DE INTERNET EN TIEMPO REAL:\n"
+                    for res in results:
+                        context_web += f"- {res.get('title')}: {res.get('content')}\n"
+            except Exception as e:
+                print("Aviso al buscar en Tavily:", e)
+
+        # Construcción del prompt con contexto en vivo
+        system_prompt = (
+            "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial. "
+            "Tenés acceso a búsquedas en tiempo real en la web. Respondé usando la información más "
+            "reciente proporcionada de forma breve, precisa y fluida."
+        )
+
+        user_content = user_text
+        if context_web:
+            user_content += context_web
+
         url = "https://api.groq.com/openai/v1/chat/completions"
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": [
-                {"role": "system", "content": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial. Respondé de forma breve y fluida."},
-                {"role": "user", "content": user_text}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content}
             ]
         }
         headers = {
@@ -57,10 +88,9 @@ async def chat_endpoint(request: Request):
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
             
-            # Generar audio MP3 con la voz de Google en español argentino/latino
+            # Generar audio MP3 de la respuesta
             audio_base64 = ""
             try:
-                # Limpiamos asteriscos y formatos para la voz
                 clean_speech = reply_text.replace("*", "").replace("#", "").strip()
                 tts = gTTS(text=clean_speech, lang='es', tld='com.ar')
                 fp = io.BytesIO()
