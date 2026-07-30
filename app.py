@@ -12,7 +12,6 @@ from tavily import TavilyClient
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-# Librerías para extracción limpia de texto de documentos
 import pypdf
 import docx
 
@@ -31,7 +30,7 @@ TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
-# Voz masculina argentina joven (+10% velocidad)
+# Voz argentina masculina joven
 async def generate_voice_male(text: str) -> str:
     clean_text = text.replace("*", "").replace("#", "").strip()
     if not clean_text:
@@ -45,10 +44,9 @@ async def generate_voice_male(text: str) -> str:
     fp.seek(0)
     return base64.b64encode(fp.read()).decode('utf-8')
 
-# Función para extraer texto de archivos (PDF, Word, TXT)
+# Función robusta en backend para extraer texto de PDF, Word y TXT
 def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
     try:
-        # Remover cabecera data:application/...;base64,
         if "," in file_b64:
             file_b64 = file_b64.split(",")[1]
             
@@ -56,28 +54,28 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         ext = filename.lower().split('.')[-1] if '.' in filename else ''
         extracted_text = ""
 
-        # Si es PDF
         if ext == "pdf":
             reader = pypdf.PdfReader(io.BytesIO(file_bytes))
             for page in reader.pages:
-                extracted_text += page.extract_text() + "\n"
+                txt = page.extract_text()
+                if txt:
+                    extracted_text += txt + "\n"
                 
-        # Si es Word (.docx)
         elif ext in ["doc", "docx"]:
             doc = docx.Document(io.BytesIO(file_bytes))
             for para in doc.paragraphs:
-                extracted_text += para.text + "\n"
+                if para.text:
+                    extracted_text += para.text + "\n"
                 
-        # Si es texto plano (TXT, CSV, JSON)
         else:
             extracted_text = file_bytes.decode('utf-8', errors='ignore')
 
         return extracted_text.strip()
     except Exception as e:
         print("Error extrayendo texto del documento:", e)
+        traceback.print_exc()
         return ""
 
-# Helper para generar PDF descargable
 def create_pdf_bytes(text_content: str) -> bytes:
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -124,19 +122,20 @@ async def chat_endpoint(request: Request):
         user_image_b64 = data.get("image") or ""
         file_b64 = data.get("file_b64") or ""
         filename = data.get("filename") or "documento"
+        extracted_text_client = data.get("extracted_text") or ""
         
-        if not user_text and not user_image_b64 and not file_b64:
+        if not user_text and not user_image_b64 and not file_b64 and not extracted_text_client:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # Extraer texto de PDF/Word si vino un archivo adjunto
+        # Procesamiento prioritario de documentos en Python
         document_context = ""
         if file_b64:
             extracted = extract_text_from_file_b64(file_b64, filename)
             if extracted:
-                # Limitamos a los primeros 4000 caracteres para no saturar tokens
-                document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:4000]}"
+                document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:5000]}"
+        elif extracted_text_client:
+            document_context = f"\n\nCONTENIDO DEL DOCUMENTO ({filename}):\n{extracted_text_client[:5000]}"
 
-        # Búsqueda web ultra rápida si corresponde
         context_web = ""
         if tavily_client and user_text:
             try:
@@ -158,8 +157,7 @@ async def chat_endpoint(request: Request):
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
             "Mantené la lógica estricta del diálogo. Si informás la temperatura o el clima, usá SIEMPRE grados Celsius (°C), nunca Fahrenheit. "
-            "NO uses la palabra 'che'. Si el usuario subió un documento, analizalo y hacé un resumen o respondé lo que te pida de forma clara. "
-            "Si el usuario te pide generar un informe o PDF, indicale que se lo adjuntaste para descargar."
+            "NO uses la palabra 'che'. Si el usuario subió un documento, analizá el texto provisto y hacé el resumen o respuesta correspondiente directamente sin pedir nada adicional."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
@@ -173,7 +171,7 @@ async def chat_endpoint(request: Request):
         if context_web:
             user_content += context_web
         if user_image_b64:
-            user_content += "\n[IMAGEN ADJUNTADA POR EL USUARIO PARA ANÁLISIS/EDICIÓN]"
+            user_content += "\n[IMAGEN/VIDEO ADJUNTADO POR EL USUARIO]"
 
         messages_payload.append({"role": "user", "content": user_content})
 
@@ -181,7 +179,7 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 250,
+            "max_tokens": 300,
             "temperature": 0.4
         }
         headers = {
@@ -189,7 +187,7 @@ async def chat_endpoint(request: Request):
             "Content-Type": "application/json"
         }
 
-        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        response = requests.post(url, json=payload, headers=headers, timeout=12)
         res_json = response.json()
 
         if response.status_code == 200:
