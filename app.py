@@ -27,13 +27,13 @@ tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
 chat_history = []
 
-# Función asíncrona para generar voz de varón joven/adolescente argentino más rápida (+20% velocidad)
+# Función para la voz masculina con velocidad ajustada (+10%)
 async def generate_voice_male(text: str) -> str:
     clean_text = text.replace("*", "").replace("#", "").strip()
     if not clean_text:
         return ""
     
-    # Voice argentina masculina: es-AR-TomasNeural (ritmo acelerado)
+    # Ritmo natural ajustado a +10%
     communicate = edge_tts.Communicate(clean_text, "es-AR-TomasNeural", rate="+10%")
     fp = io.BytesIO()
     async for chunk in communicate.stream():
@@ -48,6 +48,14 @@ async def serve_index():
         return FileResponse("index.html")
     return "<h1>Servidor Nico IA activo</h1>"
 
+# Endpoint para reiniciar el chat
+@app.post("/api/reset")
+async def reset_chat():
+    global chat_history
+    chat_history = []
+    return {"status": "ok", "message": "Historial reiniciado"}
+
+# --- ACÁ REEMPLAZÁS TODO TU @app.post("/api/chat") VIEJO POR ESTE NUEVO ---
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
     global chat_history
@@ -62,7 +70,7 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Búsqueda web contextualizada con la ubicación real del usuario
+        # Búsqueda web ultra liviana (1 resultado para máxima velocidad)
         context_web = ""
         if tavily_client:
             try:
@@ -79,6 +87,66 @@ async def chat_endpoint(request: Request):
                         context_web += f"- {res.get('title')}: {res.get('content')}\n"
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
+
+        # Instrucciones de personalidad, tono y lógica corregida
+        system_prompt = (
+            f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
+            f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
+            "Mantené la lógica estricta del diálogo: si el usuario te pregunta si te acordás de algo, respondé afirmando o recordando la información. "
+            "NO uses la palabra 'che'. Respondé de forma breve, clara, directa y fluida (máximo 2 o 3 oraciones)."
+        )
+
+        messages_payload = [{"role": "system", "content": system_prompt}]
+        
+        # Historial reciente
+        for msg in chat_history[-6:]:
+            messages_payload.append(msg)
+
+        user_content = user_text
+        if context_web:
+            user_content += context_web
+
+        messages_payload.append({"role": "user", "content": user_content})
+
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": messages_payload,
+            "max_tokens": 120,
+            "temperature": 0.4
+        }
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
+            "Content-Type": "application/json"
+        }
+
+        response = requests.post(url, json=payload, headers=headers, timeout=8)
+        res_json = response.json()
+
+        if response.status_code == 200:
+            reply_text = res_json["choices"][0]["message"]["content"]
+            
+            chat_history.append({"role": "user", "content": user_text})
+            chat_history.append({"role": "assistant", "content": reply_text})
+
+            # Generar audio con la voz corregida
+            audio_base64 = await generate_voice_male(reply_text)
+
+            return {
+                "response": reply_text, 
+                "reply": reply_text,
+                "audio": audio_base64
+            }
+        else:
+            return {"response": "Error en el servidor.", "reply": "Error en el servidor."}
+
+    except Exception as e:
+        traceback.print_exc()
+        return {"response": "Error interno.", "reply": "Error interno."}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
 
         system_prompt = (
     f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
