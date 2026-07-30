@@ -22,7 +22,6 @@ app.add_middleware(
 GROQ_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
-# Inicializar cliente de búsqueda Tavily
 tavily_client = TavilyClient(api_key=TAVILY_API_KEY) if TAVILY_API_KEY else None
 
 @app.get("/", response_class=HTMLResponse)
@@ -43,26 +42,29 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Búsqueda Web en Tiempo Real con Tavily
+        # Búsqueda optimizada y rápida en Tavily
         context_web = ""
         if tavily_client:
             try:
-                print("--- BÚSQUEDA WEB EN TIEMPO REAL INICIADA ---")
-                search_result = tavily_client.search(query=user_text, max_results=3)
+                # Si pregunta por el clima o temperatura, forzamos búsqueda meteorológica precisa
+                search_query = user_text
+                if any(w in user_text.lower() for w in ["clima", "temperatura", "tiempo", "grados"]):
+                    search_query = f"clima hoy en Benito Juarez Buenos Aires Argentina temperatura actual"
+
+                search_result = tavily_client.search(query=search_query, max_results=2, search_depth="basic")
                 results = search_result.get("results", [])
                 
                 if results:
-                    context_web = "\n\nINFORMACIÓN ACTUALIZADA DE INTERNET EN TIEMPO REAL:\n"
+                    context_web = "\n\nINFORMACIÓN ACTUALIZADA DE INTERNET:\n"
                     for res in results:
                         context_web += f"- {res.get('title')}: {res.get('content')}\n"
             except Exception as e:
-                print("Aviso al buscar en Tavily:", e)
+                print("Aviso búsqueda:", e)
 
-        # Construcción del prompt con contexto en vivo
         system_prompt = (
-            "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial. "
-            "Tenés acceso a búsquedas en tiempo real en la web. Respondé usando la información más "
-            "reciente proporcionada de forma breve, precisa y fluida."
+            "Sos Nico IA, un asistente virtual argentino, directo y rápido. "
+            "Respondé de forma SÚPER BREVE (máximo 2 o 3 oraciones cortas). "
+            "Usa la información en tiempo real para dar datos exactos de clima, noticias o fechas."
         )
 
         user_content = user_text
@@ -75,20 +77,21 @@ async def chat_endpoint(request: Request):
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
-            ]
+            ],
+            "max_tokens": 150,
+            "temperature": 0.3
         }
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
             "Content-Type": "application/json"
         }
 
-        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        response = requests.post(url, json=payload, headers=headers, timeout=8)
         res_json = response.json()
 
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
             
-            # Generar audio MP3 de la respuesta
             audio_base64 = ""
             try:
                 clean_speech = reply_text.replace("*", "").replace("#", "").strip()
@@ -98,7 +101,7 @@ async def chat_endpoint(request: Request):
                 fp.seek(0)
                 audio_base64 = base64.b64encode(fp.read()).decode('utf-8')
             except Exception as e:
-                print("Error al generar TTS audio:", e)
+                print("Error TTS:", e)
 
             return {
                 "response": reply_text, 
@@ -110,7 +113,7 @@ async def chat_endpoint(request: Request):
 
     except Exception as e:
         traceback.print_exc()
-        return {"response": "Error interno del servidor.", "reply": "Error interno del servidor."}
+        return {"response": "Error interno.", "reply": "Error interno."}
 
 if __name__ == "__main__":
     import uvicorn
