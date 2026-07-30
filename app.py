@@ -5,12 +5,16 @@ import requests
 import traceback
 import asyncio
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import edge_tts
 from tavily import TavilyClient
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+
+# Librerías para extracción limpia de texto de documentos
+import pypdf
+import docx
 
 app = FastAPI()
 
@@ -41,7 +45,39 @@ async def generate_voice_male(text: str) -> str:
     fp.seek(0)
     return base64.b64encode(fp.read()).decode('utf-8')
 
-# Función helper para generar PDF al instante
+# Función para extraer texto de archivos (PDF, Word, TXT)
+def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
+    try:
+        # Remover cabecera data:application/...;base64,
+        if "," in file_b64:
+            file_b64 = file_b64.split(",")[1]
+            
+        file_bytes = base64.b64decode(file_b64)
+        ext = filename.lower().split('.')[-1] if '.' in filename else ''
+        extracted_text = ""
+
+        # Si es PDF
+        if ext == "pdf":
+            reader = pypdf.PdfReader(io.BytesIO(file_bytes))
+            for page in reader.pages:
+                extracted_text += page.extract_text() + "\n"
+                
+        # Si es Word (.docx)
+        elif ext in ["doc", "docx"]:
+            doc = docx.Document(io.BytesIO(file_bytes))
+            for para in doc.paragraphs:
+                extracted_text += para.text + "\n"
+                
+        # Si es texto plano (TXT, CSV, JSON)
+        else:
+            extracted_text = file_bytes.decode('utf-8', errors='ignore')
+
+        return extracted_text.strip()
+    except Exception as e:
+        print("Error extrayendo texto del documento:", e)
+        return ""
+
+# Helper para generar PDF descargable
 def create_pdf_bytes(text_content: str) -> bytes:
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -52,7 +88,6 @@ def create_pdf_bytes(text_content: str) -> bytes:
     p.setFont("Helvetica", 10)
     y = 710
     for line in text_content.split('\n'):
-        # Envolver texto simple
         while len(line) > 80:
             p.drawString(40, y, line[:80])
             line = line[80:]
@@ -87,11 +122,21 @@ async def chat_endpoint(request: Request):
         user_location = data.get("location") or "Benito Juárez, Provincia de Buenos Aires, Argentina"
         history_from_client = data.get("history") or []
         user_image_b64 = data.get("image") or ""
+        file_b64 = data.get("file_b64") or ""
+        filename = data.get("filename") or "documento"
         
-        if not user_text and not user_image_b64:
-            return {"response": "No recibí información.", "reply": "No recibí información."}
+        if not user_text and not user_image_b64 and not file_b64:
+            return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # Búsqueda web ultra rápida si aplica
+        # Extraer texto de PDF/Word si vino un archivo adjunto
+        document_context = ""
+        if file_b64:
+            extracted = extract_text_from_file_b64(file_b64, filename)
+            if extracted:
+                # Limitamos a los primeros 4000 caracteres para no saturar tokens
+                document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:4000]}"
+
+        # Búsqueda web ultra rápida si corresponde
         context_web = ""
         if tavily_client and user_text:
             try:
@@ -113,7 +158,8 @@ async def chat_endpoint(request: Request):
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
             "Mantené la lógica estricta del diálogo. Si informás la temperatura o el clima, usá SIEMPRE grados Celsius (°C), nunca Fahrenheit. "
-            "NO uses la palabra 'che'. Si el usuario pide generar un informe o PDF, indicale que se lo adjuntaste para descargar."
+            "NO uses la palabra 'che'. Si el usuario subió un documento, analizalo y hacé un resumen o respondé lo que te pida de forma clara. "
+            "Si el usuario te pide generar un informe o PDF, indicale que se lo adjuntaste para descargar."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
@@ -122,6 +168,8 @@ async def chat_endpoint(request: Request):
             messages_payload.append(msg)
 
         user_content = user_text
+        if document_context:
+            user_content += document_context
         if context_web:
             user_content += context_web
         if user_image_b64:
@@ -133,7 +181,7 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 200,
+            "max_tokens": 250,
             "temperature": 0.4
         }
         headers = {
@@ -147,7 +195,6 @@ async def chat_endpoint(request: Request):
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
 
-            # Si el usuario solicitó crear/descargar PDF
             pdf_b64 = ""
             if any(w in user_text.lower() for w in ["pdf", "descargar informe", "generar documento", "resumen en archivo"]):
                 pdf_bytes = create_pdf_bytes(reply_text)
