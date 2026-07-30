@@ -43,8 +43,8 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Modelos estables con cuotas independientes en la SDK genai
-        models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+        # Nombres oficiales compatibles con la SDK google-genai
+        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.0-flash-exp"]
         reply_text = None
 
         for model_name in models_to_try:
@@ -64,7 +64,7 @@ async def chat_endpoint(request: Request):
                 print(f"--- AVISO EN {model_name} ---:", mod_err)
 
         if not reply_text:
-            reply_text = "¡Hola che! Se agotó la cuota diaria gratuita de Google para hoy en este proyecto. Probá de nuevo en un rato o podés renovar la API key desde Google AI Studio."
+            reply_text = "¡Hola che! Se agotó el límite diario de consultas gratuitas de Google en este proyecto. Si querés seguir probando hoy mismo, podés generar una API Key nueva desde Google AI Studio y actualizarla en Render."
 
         return {"response": reply_text, "reply": reply_text}
 
