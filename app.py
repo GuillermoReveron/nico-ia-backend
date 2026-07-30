@@ -7,7 +7,7 @@ import google.generativeai as genai
 
 app = FastAPI()
 
-# Permisos CORS para que la APK no sufra bloqueos de red
+# Permisos CORS habilitados para el WebView de la APK
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,14 +16,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configurar API Key de Gemini desde Render
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Clave nueva de respaldo por si Render no la toma de las variables de entorno
+NEW_API_KEY = "AQ.Ab8RN6IcHjwlZXbmPEEMnCicqMl3W2QlXghlk-02O5BJsK5CBQ"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", NEW_API_KEY)
+
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# Modelo Gemini de respuesta rápida
+# Modelo compatible y actualizado
 model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
+    model_name="gemini-1.5-flash-latest",
     system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial. Respondés siempre con tono natural de Argentina."
 )
 
@@ -37,7 +39,7 @@ async def serve_index():
 async def chat_endpoint(request: Request):
     try:
         if not GEMINI_API_KEY:
-            raise ValueError("No se encontró la GEMINI_API_KEY en las variables de entorno de Render.")
+            raise ValueError("No se configuró la API Key de Gemini.")
         
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
@@ -45,7 +47,7 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún mensaje de texto."}
 
-        # Generar respuesta con Gemini
+        # Generar respuesta con el modelo Gemini
         response = model.generate_content(user_text)
         return {"response": response.text, "reply": response.text}
 
