@@ -33,7 +33,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.7);
+            background: rgba(0,0,0,0.8);
             backdrop-filter: blur(4px);
             z-index: 100;
             display: none;
@@ -113,26 +113,65 @@
             object-fit: cover;
         }
 
+        .rec-indicator {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            display: none;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .rec-dot {
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
         .cam-controls {
             display: flex;
             justify-content: space-around;
+            align-items: center;
             width: 100%;
             padding: 15px;
             background: #121824;
+            gap: 8px;
         }
 
         .cam-btn {
             background: #00f2fe;
             color: #000;
             border: none;
-            padding: 10px 18px;
+            padding: 10px 14px;
             border-radius: 20px;
             font-weight: bold;
+            font-size: 0.85rem;
             cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .cam-btn.rec {
+            background: #ef4444;
+            color: #fff;
         }
 
         .cam-btn.cancel {
-            background: #ef4444;
+            background: #475569;
             color: #fff;
         }
 
@@ -270,7 +309,7 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        .preview-img {
+        .preview-img, .preview-video {
             max-width: 100%;
             max-height: 200px;
             border-radius: 10px;
@@ -408,19 +447,23 @@
     <div id="camera-modal-overlay" onclick="closeCameraModal(event)">
         <div class="modal-box" onclick="event.stopPropagation()">
             <div class="modal-title">Seleccionar Opción</div>
-            <button class="modal-btn" onclick="startLiveCamera('user')">📸 Tomar Foto con Cámara</button>
+            <button class="modal-btn" onclick="startLiveCamera(false)">📸 Abrir Cámara (Foto / Video)</button>
             <button class="modal-btn" onclick="openGallery()">🖼️ Buscar en Galería</button>
         </div>
     </div>
 
-    <!-- Modal Visor de Cámara en Vivo -->
+    <!-- Modal Visor de Cámara con Grabación de Video -->
     <div id="live-camera-modal">
         <div class="camera-view-box">
+            <div id="rec-indicator" class="rec-indicator">
+                <div class="rec-dot"></div> REC <span id="rec-timer">00:00</span>
+            </div>
             <video id="webcam-video" autoplay playsinline muted></video>
             <canvas id="webcam-canvas" style="display:none;"></canvas>
             <div class="cam-controls">
                 <button class="cam-btn cancel" onclick="stopLiveCamera()">Cancelar</button>
-                <button class="cam-btn" onclick="capturePhotoFromCamera()">📸 Capturar</button>
+                <button class="cam-btn" onclick="capturePhotoFromCamera()">📸 Foto</button>
+                <button id="rec-video-btn" class="cam-btn rec" onclick="toggleVideoRecording()">🎥 Grabar</button>
             </div>
         </div>
     </div>
@@ -472,9 +515,16 @@
         let isListening = false;
         let userLocation = "Benito Juárez, Provincia de Buenos Aires, Argentina";
         let selectedBase64Image = "";
+        let selectedBase64Video = "";
         let selectedFileB64 = "";
         let selectedFilename = "";
+        
         let videoStream = null;
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+        let recInterval = null;
+        let recSeconds = 0;
 
         let currentSessionId = localStorage.getItem('nico_current_session') || 'session_' + Date.now();
         let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
@@ -508,7 +558,6 @@
             document.getElementById('gallery-input').click();
         }
 
-        // Abrir Visor de Cámara WebRTC (Garantizado en WebView Android)
         async function startLiveCamera() {
             closeCameraModal();
             const modal = document.getElementById('live-camera-modal');
@@ -518,18 +567,20 @@
             try {
                 videoStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: { ideal: "environment" } }, 
-                    audio: false 
+                    audio: true 
                 });
                 video.srcObject = videoStream;
             } catch (err) {
-                console.error("Error abriendo cámara en vivo:", err);
-                alert("No se pudo iniciar la cámara en vivo. Usando alternativa de archivo.");
+                console.error("Error abriendo cámara:", err);
+                alert("No se pudo acceder a la cámara en vivo.");
                 stopLiveCamera();
-                document.getElementById('gallery-input').click();
             }
         }
 
         function stopLiveCamera() {
+            if (isRecording) {
+                stopVideoRecording();
+            }
             const modal = document.getElementById('live-camera-modal');
             modal.classList.remove('open');
             if (videoStream) {
@@ -547,8 +598,68 @@
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             
             selectedBase64Image = canvas.toDataURL('image/jpeg', 0.85);
+            selectedBase64Video = ""; // reset
             stopLiveCamera();
-            appendMessageToUI("📷 Foto capturada con la cámara", 'user-message', selectedBase64Image);
+            appendMessageToUI("📷 Foto capturada", 'user-message', selectedBase64Image);
+        }
+
+        function toggleVideoRecording() {
+            if (!isRecording) {
+                startVideoRecording();
+            } else {
+                stopVideoRecording();
+            }
+        }
+
+        function startVideoRecording() {
+            if (!videoStream) return;
+            recordedChunks = [];
+            
+            try {
+                mediaRecorder = new MediaRecorder(videoStream, { mimeType: 'video/webm' });
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(videoStream);
+            }
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) recordedChunks.push(e.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    selectedBase64Video = e.target.result;
+                    selectedBase64Image = ""; // reset
+                    appendMessageToUI("🎥 Video grabado listo", 'user-message', null, null, selectedBase64Video);
+                };
+                reader.readAsDataURL(blob);
+            };
+
+            mediaRecorder.start();
+            isRecording = true;
+
+            document.getElementById('rec-indicator').style.display = 'flex';
+            document.getElementById('rec-video-btn').innerText = '⏹️ Detener';
+            
+            recSeconds = 0;
+            recInterval = setInterval(() => {
+                recSeconds++;
+                const mins = String(Math.floor(recSeconds / 60)).padStart(2, '0');
+                const secs = String(recSeconds % 60).padStart(2, '0');
+                document.getElementById('rec-timer').innerText = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function stopVideoRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+            }
+            isRecording = false;
+            clearInterval(recInterval);
+            document.getElementById('rec-indicator').style.display = 'none';
+            document.getElementById('rec-video-btn').innerText = '🎥 Grabar';
+            stopLiveCamera();
         }
 
         function saveSessions() {
@@ -637,7 +748,7 @@
 
             activeSession.messages.forEach(msg => {
                 const className = msg.sender === 'user' ? 'user-message' : 'bot-message';
-                appendMessageToUI(msg.text, className, msg.image, msg.pdf);
+                appendMessageToUI(msg.text, className, msg.image, msg.pdf, msg.video);
             });
         }
 
@@ -647,13 +758,19 @@
 
             const reader = new FileReader();
             reader.onload = function(e) {
-                selectedBase64Image = e.target.result;
-                appendMessageToUI(`📷 Archivo listo: ${file.name}`, 'user-message', selectedBase64Image);
+                if (file.type.startsWith('video/')) {
+                    selectedBase64Video = e.target.result;
+                    selectedBase64Image = "";
+                    appendMessageToUI(`🎥 Video listo: ${file.name}`, 'user-message', null, null, selectedBase64Video);
+                } else {
+                    selectedBase64Image = e.target.result;
+                    selectedBase64Video = "";
+                    appendMessageToUI(`📷 Archivo listo: ${file.name}`, 'user-message', selectedBase64Image);
+                }
             };
             reader.readAsDataURL(file);
         }
 
-        // Lectura completa de documentos a Base64 para procesamiento en servidor
         function handleDocumentSelect(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -689,7 +806,7 @@
             const inputField = document.getElementById('user-input');
             let message = inputField.value.trim();
             
-            if (!message && !selectedBase64Image && !selectedFileB64) return;
+            if (!message && !selectedBase64Image && !selectedBase64Video && !selectedFileB64) return;
             
             if (!message && selectedFileB64) {
                 message = `Hacé un resumen del archivo ${selectedFilename}.`;
@@ -699,13 +816,17 @@
                 message = "Te envío esta foto para analizar o editar.";
             }
 
+            if (!message && selectedBase64Video) {
+                message = "Te envío este video grabado para analizar.";
+            }
+
             stopAudio();
 
             const activeSession = sessions[currentSessionId];
             const userMsgObj = { sender: 'user', text: message };
-            if (selectedBase64Image) {
-                userMsgObj.image = selectedBase64Image;
-            }
+            if (selectedBase64Image) userMsgObj.image = selectedBase64Image;
+            if (selectedBase64Video) userMsgObj.video = selectedBase64Video;
+
             activeSession.messages.push(userMsgObj);
 
             if (activeSession.title === "Nueva Charla") {
@@ -713,13 +834,15 @@
             }
 
             saveSessions();
-            appendMessageToUI(message, 'user-message', selectedBase64Image);
+            appendMessageToUI(message, 'user-message', selectedBase64Image, null, selectedBase64Video);
             
             const imageToSend = selectedBase64Image;
+            const videoToSend = selectedBase64Video;
             const fileToSend = selectedFileB64;
             const filenameToSend = selectedFilename;
 
             selectedBase64Image = "";
+            selectedBase64Video = "";
             selectedFileB64 = "";
             selectedFilename = "";
             inputField.value = '';
@@ -738,7 +861,7 @@
                     body: JSON.stringify({ 
                         message: message,
                         location: userLocation,
-                        image: imageToSend,
+                        image: imageToSend || videoToSend,
                         file_b64: fileToSend,
                         filename: filenameToSend,
                         session_id: currentSessionId,
@@ -780,7 +903,7 @@
             container.appendChild(a);
         }
 
-        function appendMessageToUI(text, className, imgData = null, pdfB64 = null) {
+        function appendMessageToUI(text, className, imgData = null, pdfB64 = null, videoData = null) {
             const chatContainer = document.getElementById('chat-container');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
@@ -791,6 +914,14 @@
                 imgEl.src = imgData;
                 imgEl.className = 'preview-img';
                 messageDiv.appendChild(imgEl);
+            }
+
+            if (videoData) {
+                const vidEl = document.createElement('video');
+                vidEl.src = videoData;
+                vidEl.controls = true;
+                vidEl.className = 'preview-video';
+                messageDiv.appendChild(vidEl);
             }
 
             if (pdfB64) {
