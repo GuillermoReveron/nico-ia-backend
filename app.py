@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import traceback
 from fastapi import FastAPI, HTTPException, Request
@@ -35,8 +36,8 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Modelos habilitados en v1beta
-        models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]
+        # Modelos válidos en la capa gratuita actual
+        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-8b"]
         
         reply_text = None
         last_error_details = None
@@ -56,22 +57,31 @@ async def chat_endpoint(request: Request):
             headers = {"Content-Type": "application/json"}
             print(f"--- PROBANDO HTTP DIRECTO CON: {model_name} ---")
             
-            res = requests.post(url, json=payload, headers=headers, timeout=30)
-            res_data = res.json()
+            # Reintento si hay un 429 por cuota por minuto
+            for attempt in range(2):
+                res = requests.post(url, json=payload, headers=headers, timeout=30)
+                res_data = res.json()
 
-            if res.status_code == 200:
-                try:
-                    reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                    print(f"--- ÉXITO CON: {model_name} ---")
+                if res.status_code == 200:
+                    try:
+                        reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                        print(f"--- ÉXITO CON: {model_name} ---")
+                        break
+                    except KeyError:
+                        break
+                elif res.status_code == 429:
+                    print(f"Cuota temporal superada en {model_name}. Esperando 5s... (Intento {attempt + 1})")
+                    time.sleep(5)
+                else:
+                    print(f"Falló {model_name} ({res.status_code}):", res_data)
+                    last_error_details = res_data
                     break
-                except KeyError:
-                    continue
-            else:
-                print(f"Falló {model_name} ({res.status_code}):", res_data)
-                last_error_details = res_data
+            
+            if reply_text:
+                break
 
         if not reply_text:
-            error_msg = last_error_details.get("error", {}).get("message", "Error al conectar con Gemini") if last_error_details else "No se pudo obtener respuesta."
+            error_msg = last_error_details.get("error", {}).get("message", "Superada la cuota de la API o modelo no disponible.") if last_error_details else "No se pudo obtener respuesta."
             raise HTTPException(status_code=500, detail=error_msg)
 
         return {"response": reply_text, "reply": reply_text}
