@@ -28,13 +28,44 @@
 
         header {
             background-color: #121824;
-            padding: 12px;
+            padding: 12px 16px;
             text-align: center;
             font-size: 1.1rem;
             font-weight: 700;
             color: #00f2fe;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
             flex-shrink: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+        }
+
+        .header-title {
+            width: 100%;
+            text-align: center;
+        }
+
+        .reset-btn {
+            background: rgba(0, 242, 254, 0.1);
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            color: #00f2fe;
+            padding: 5px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            position: absolute;
+            right: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .reset-btn:active {
+            transform: scale(0.95);
+            background: rgba(0, 242, 254, 0.2);
         }
 
         #chat-container {
@@ -165,10 +196,15 @@
 </head>
 <body>
 
-    <header>Nico IA</header>
+    <header>
+        <div class="header-title">Nico IA</div>
+        <button class="reset-btn" onclick="resetChat()" title="Iniciar nueva conversación">
+            🔄 Nuevo
+        </button>
+    </header>
 
     <div id="chat-container">
-        <div class="message bot-message">¡Qué hacés! Soy Nico IA. ¿En qué te doy una mano hoy?</div>
+        <div class="message bot-message">¡Buenas! Soy Nico IA. ¿En qué te doy una mano hoy?</div>
     </div>
 
     <div id="visualizer-container">
@@ -203,17 +239,18 @@
         const audioPlayer = document.getElementById('audio-player');
         let recognition = null;
         let isListening = false;
-        let userLocation = "Benito Juárez, Buenos Aires, Argentina";
+        let userLocation = "Benito Juárez, Provincia de Buenos Aires, Argentina";
 
-        // Obtener geolocalización
+        // Obtener geolocalización real del dispositivo
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition((pos) => {
                 userLocation = `Latitud ${pos.coords.latitude}, Longitud ${pos.coords.longitude} (Benito Juárez, Buenos Aires, Argentina)`;
             }, (err) => {
-                console.log("GPS no permitido, usando ubicación por defecto");
+                console.log("GPS no disponible, utilizando ubicación por defecto.");
             });
         }
 
+        // Cortar audio y apagar la animación de orbita
         function stopAudio() {
             if (audioPlayer) {
                 audioPlayer.pause();
@@ -233,7 +270,7 @@
             audioPlayer.onended = () => orb.classList.remove('speaking');
             audioPlayer.onerror = () => orb.classList.remove('speaking');
 
-            audioPlayer.play().catch(e => console.error("Error al reproducir:", e));
+            audioPlayer.play().catch(e => console.error("Error al reproducir audio:", e));
         }
 
         async function sendMessage() {
@@ -273,6 +310,17 @@
             }
         }
 
+        async function resetChat() {
+            stopAudio();
+            try {
+                await fetch('/api/reset', { method: 'POST' });
+                const chatContainer = document.getElementById('chat-container');
+                chatContainer.innerHTML = '<div class="message bot-message">¡Chat reiniciado! ¿En qué te ayudo ahora?</div>';
+            } catch (e) {
+                console.error("Error al reiniciar chat:", e);
+            }
+        }
+
         function appendMessage(text, className) {
             const chatContainer = document.getElementById('chat-container');
             const messageDiv = document.createElement('div');
@@ -288,7 +336,7 @@
 
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                alert("Reconocimiento de voz no disponible.");
+                alert("El reconocimiento de voz no está soportado en este navegador.");
                 return;
             }
 
