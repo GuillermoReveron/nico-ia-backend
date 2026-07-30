@@ -29,12 +29,29 @@
 
         header {
             background-color: #1f1f1f;
-            padding: 14px;
-            text-align: center;
-            font-size: 1.1rem;
-            font-weight: bold;
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             border-bottom: 1px solid #2a2a2a;
             flex-shrink: 0;
+        }
+
+        header .title {
+            font-size: 1.1rem;
+            font-weight: bold;
+        }
+
+        #tts-btn {
+            background: none;
+            border: none;
+            font-size: 1.3rem;
+            cursor: pointer;
+            color: #4da6ff;
+        }
+
+        #tts-btn.muted {
+            opacity: 0.4;
         }
 
         #chat-container {
@@ -120,23 +137,23 @@
 </head>
 <body>
 
-    <header>Nico IA</header>
+    <header>
+        <span class="title">Nico IA</span>
+        <!-- Parlantito arriba a la derecha -->
+        <button id="tts-btn" title="Activar/Desactivar Voz">🔊</button>
+    </header>
 
     <div id="chat-container">
         <div class="message bot-msg">¡Hola! Soy Nico IA. ¿En qué te puedo ayudar hoy?</div>
     </div>
 
     <div id="input-container">
-        <!-- Cámara -->
         <button class="icon-btn" id="cam-btn" title="Cámara">📷</button>
-        <!-- Adjuntar -->
         <button class="icon-btn" id="attach-btn" title="Adjuntar">📎</button>
-        <!-- Micrófono -->
         <button class="icon-btn" id="mic-btn" title="Dictar">🎙️</button>
         
         <input type="text" id="user-input" placeholder="Escribí un mensaje..." />
         
-        <!-- Enviar -->
         <button class="icon-btn" id="send-btn" title="Enviar">➔</button>
     </div>
 
@@ -150,13 +167,25 @@
         const camBtn = document.getElementById('cam-btn');
         const attachBtn = document.getElementById('attach-btn');
         const micBtn = document.getElementById('mic-btn');
+        const ttsBtn = document.getElementById('tts-btn');
         const cameraFileInput = document.getElementById('camera-file-input');
         const attachFileInput = document.getElementById('attach-file-input');
 
-        // Función para que la app HABLE (Síntesis de voz)
+        let ttsEnabled = true;
+
+        // Alternar parlantito encendido/apagado
+        ttsBtn.addEventListener('click', () => {
+            ttsEnabled = !ttsEnabled;
+            ttsBtn.innerText = ttsEnabled ? '🔊' : '🔇';
+            ttsBtn.classList.toggle('muted', !ttsEnabled);
+            if (!ttsEnabled && 'speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+            }
+        });
+
         function speakText(text) {
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel(); // Detener lecturas previas
+            if (ttsEnabled && 'speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'es-AR';
                 utterance.rate = 1.0;
@@ -171,7 +200,6 @@
             chatContainer.appendChild(msgDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
 
-            // Si responde el bot, que lo lea en voz alta
             if (sender === 'bot') {
                 speakText(text);
             }
@@ -202,7 +230,6 @@
         sendBtn.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
 
-        // Acciones de botones
         camBtn.addEventListener('click', () => cameraFileInput.click());
         attachBtn.addEventListener('click', () => attachFileInput.click());
 
@@ -218,7 +245,6 @@
             }
         });
 
-        // Micrófono / Reconocimiento de Voz
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
@@ -232,7 +258,7 @@
             recognition.onresult = (event) => {
                 userInput.value = event.results[0][0].transcript;
                 micBtn.classList.remove('recording');
-                sendMessage(); // Envía automáticamente al terminar de hablar
+                sendMessage();
             };
 
             recognition.onerror = () => micBtn.classList.remove('recording');
