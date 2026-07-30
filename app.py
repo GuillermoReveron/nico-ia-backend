@@ -38,38 +38,40 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Modelos de respaldo
-        target_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"]
+        # Lista de modelos estables garantizados
+        candidate_models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"]
         
-        selected_model_name = None
-        try:
-            # Obtener modelos disponibles y limpiar el prefijo 'models/'
-            available_models = [m.name.replace("models/", "") for m in genai.list_models() if "generateContent" in m.supported_generation_methods]
-            if available_models:
-                for tm in target_models:
-                    matching = [m for m in available_models if tm in m]
-                    if matching:
-                        selected_model_name = matching[0]
-                        break
-                if not selected_model_name:
-                    selected_model_name = available_models[0]
-        except Exception as e:
-            print("No se pudo listar modelos, usando default:", e)
-            selected_model_name = "gemini-2.5-flash"
+        response_text = None
+        last_error = None
 
-        print(f"--- USANDO MODELO LIMPIO: {selected_model_name} ---")
+        for m_name in candidate_models:
+            try:
+                print(f"--- PROBANDO MODELO: {m_name} ---")
+                model = genai.GenerativeModel(
+                    model_name=m_name,
+                    system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
+                )
+                res = model.generate_content(user_text)
+                if res and res.text:
+                    response_text = res.text
+                    print(f"--- ÉXITO CON MODELO: {m_name} ---")
+                    break
+            except Exception as err:
+                print(f"Falló {m_name}: {err}")
+                last_error = err
+                continue
 
-        model = genai.GenerativeModel(
-            model_name=selected_model_name,
-            system_instruction="Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
-        )
-        
-        response = model.generate_content(user_text)
-        return {"response": response.text, "reply": response.text}
+        if not response_text:
+            if last_error:
+                raise last_error
+            raise RuntimeError("Ningún modelo de Gemini pudo procesar la solicitud.")
+
+        return {"response": response_text, "reply": response_text}
 
     except Exception as e:
-        print("--- ERROR EN CHAT ENDPOINT ---")
+        print("--- DETALLE DEL ERROR REAL ---")
         traceback.print_exc()
+        # Devolver el error exacto en el JSON para no andar a ciegas
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
