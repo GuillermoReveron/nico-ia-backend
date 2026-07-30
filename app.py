@@ -15,7 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
@@ -26,12 +26,8 @@ async def serve_index():
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
     try:
-        # DIAGNÓSTICO: Imprimir qué clave está leyendo el sistema realmente
-        key_preview = f"{GEMINI_API_KEY[:4]}...{GEMINI_API_KEY[-4:]}" if len(GEMINI_API_KEY) > 8 else "CLAVE_INVALIDA_O_VACIA"
-        print(f"=== CLAVE LEÍDA POR RENDER: {key_preview} ===")
-
-        if not GEMINI_API_KEY:
-            return {"response": "Falta GEMINI_API_KEY en Render.", "reply": "Falta GEMINI_API_KEY en Render."}
+        if not GROQ_API_KEY:
+            return {"response": "Falta la API Key en Render.", "reply": "Falta la API Key en Render."}
 
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
@@ -39,30 +35,38 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Probamos endpoint REST directo con gemini-2.0-flash
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        
         payload = {
-            "contents": [{"parts": [{"text": user_text}]}]
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."
+                },
+                {
+                    "role": "user",
+                    "content": user_text
+                }
+            ]
         }
-        headers = {"Content-Type": "application/json"}
+
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
+            "Content-Type": "application/json"
+        }
 
         response = requests.post(url, json=payload, headers=headers, timeout=15)
         res_json = response.json()
 
-        print(f"=== STATUS CODE GOOGLE: {response.status_code} ===")
-
         if response.status_code == 200:
-            reply_text = res_json["candidates"][0]["content"]["parts"][0]["text"]
+            reply_text = res_json["choices"][0]["message"]["content"]
+            print("--- RESPUESTA EXITOSA DE GROQ ---")
             return {"response": reply_text, "reply": reply_text}
         else:
-            err_msg = res_json.get("error", {}).get("message", "Error desconocido")
-            print(f"=== ERROR CRUDO GOOGLE ===: {err_msg}")
-            
-            # Si el IP de Render está bloqueado en Gemini, usamos un fallback automático
-            return {
-                "response": "Google bloqueó la petición por límite de IP/Cuota de Render. Necesitamos cambiar de proveedor o usar proxy.",
-                "reply": "Google bloqueó la petición por límite de IP/Cuota de Render. Necesitamos cambiar de proveedor o usar proxy."
-            }
+            err_msg = res_json.get("error", {}).get("message", "Error en Groq")
+            print(f"--- AVISO GROQ ({response.status_code}) ---:", err_msg)
+            return {"response": "Inconveniente temporal al procesar la respuesta.", "reply": "Inconveniente temporal al procesar la respuesta."}
 
     except Exception as e:
         traceback.print_exc()
