@@ -2,26 +2,26 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Nico IA</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        html, body { width: 100%; height: 100%; overflow: hidden; background-color: #121212; color: #e0e0e0; display: flex; flex-direction: column; }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: sans-serif; }
+        html, body { width: 100vw; height: 100vh; overflow: hidden; background-color: #121212; color: #fff; display: flex; flex-direction: column; }
         
-        header { background-color: #1f1f1f; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
-        h1 { font-size: 1.1rem; color: #fff; font-weight: 600; }
-        .voice-btn { background-color: #2e7d32; color: white; border: none; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; font-weight: bold; }
+        header { background: #1f1f1f; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; height: 55px; }
+        h1 { font-size: 1.1rem; }
+        .voice-btn { background: #2e7d32; color: white; border: none; padding: 6px 12px; border-radius: 15px; font-size: 0.8rem; font-weight: bold; }
         
-        #chat-container { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; background-color: #121212; width: 100%; }
-        .message { max-width: 85%; padding: 10px 14px; border-radius: 16px; line-height: 1.4; word-wrap: break-word; font-size: 0.95rem; }
-        .user-message { background-color: #1565c0; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
-        .bot-message { background-color: #2a2a2a; color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #3d3d3d; }
+        #chat-container { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; width: 100%; }
+        .message { max-width: 85%; padding: 10px 14px; border-radius: 15px; line-height: 1.4; word-break: break-word; font-size: 0.95rem; }
+        .user-message { background-color: #1565c0; color: white; align-self: flex-end; }
+        .bot-message { background-color: #2a2a2a; color: #e0e0e0; align-self: flex-start; border: 1px solid #333; }
         
-        #input-container { background-color: #1f1f1f; padding: 10px; display: flex; gap: 8px; align-items: center; border-top: 1px solid #333; width: 100%; }
-        .attach-btn, .camera-btn, .mic-btn { background: #2a2a2a; border: 1px solid #3d3d3d; color: #aaa; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; flex-shrink: 0; }
+        #input-container { background: #1f1f1f; padding: 10px; display: flex; gap: 6px; align-items: center; border-top: 1px solid #333; height: 60px; width: 100%; }
+        .btn { background: #2a2a2a; border: 1px solid #333; color: #fff; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.1rem; flex-shrink: 0; }
         
-        input[type="text"] { flex: 1; min-width: 0; background-color: #2a2a2a; border: 1px solid #3d3d3d; color: white; padding: 10px 14px; border-radius: 25px; outline: none; font-size: 0.95rem; }
-        .send-btn { background-color: #0084ff; border: none; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; flex-shrink: 0; }
+        input[type="text"] { flex: 1; min-width: 0; background: #2a2a2a; border: 1px solid #333; color: white; padding: 10px 14px; border-radius: 20px; outline: none; font-size: 0.95rem; }
+        .send-btn { background-color: #0084ff; border: none; }
     </style>
 </head>
 <body>
@@ -31,15 +31,15 @@
     </header>
 
     <div id="chat-container">
-        <div class="message bot-message">¡Buenas! Soy Nico IA. Podés hablarme por micrófono 🎙️, sacar fotos 📷 o escribir. ¿En qué laburamos hoy?</div>
+        <div class="message bot-message">¡Buenas! Soy Nico IA. Podés hablarme por micrófono 🎙️, sacar fotos 📷 o escribirme. ¿En qué te doy una mano hoy?</div>
     </div>
 
     <div id="input-container">
         <input type="file" id="file-input" style="display:none" onchange="handleFileSelect(event)">
-        <button class="attach-btn" onclick="document.getElementById('file-input').click()">📎</button>
-        <button class="mic-btn" id="mic-btn" onclick="startMic()">🎙️</button>
+        <button class="btn" onclick="document.getElementById('file-input').click()">📎</button>
+        <button class="btn" id="mic-btn" onclick="startMic()">🎙️</button>
         <input type="text" id="user-input" placeholder="Escribí o hablá..." onkeypress="handleKeyPress(event)">
-        <button class="send-btn" onclick="sendMessage()">➤</button>
+        <button class="btn send-btn" onclick="sendMessage()">➤</button>
     </div>
 
     <script>
@@ -72,7 +72,7 @@
         function startMic() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
-                alert('El reconocimiento de voz no está disponible en este dispositivo.');
+                alert('El reconocimiento de voz no está soportado en este navegador webView.');
                 return;
             }
             const recognition = new SpeechRecognition();
@@ -102,13 +102,19 @@
             input.value = '';
 
             try {
-                const response = await fetch('https://nico-ia-1.onrender.com/api/chat', {
+                // Petición con ruta relativa estricta
+                const response = await fetch('/api/chat', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
                     body: JSON.stringify({ message: text })
                 });
 
-                if (!response.ok) throw new Error();
+                if (!response.ok) {
+                    throw new Error('Estado servidor: ' + response.status);
+                }
 
                 const data = await response.json();
                 const replyText = data.response || data.reply || 'Sin respuesta';
@@ -116,7 +122,8 @@
                 speak(replyText);
 
             } catch (error) {
-                appendMessage('Error de conexión con Nico IA. Reintentá.', false);
+                console.error(error);
+                appendMessage('Error de conexión (' + error.message + '). Reintentá.', false);
             }
         }
 
