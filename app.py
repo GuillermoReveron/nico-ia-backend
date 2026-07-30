@@ -1,9 +1,9 @@
 import os
-import requests
 import traceback
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+import google.generativeai as genai
 
 app = FastAPI()
 
@@ -17,6 +17,9 @@ app.add_middleware(
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     if os.path.exists("index.html"):
@@ -27,57 +30,23 @@ async def serve_index():
 async def chat_endpoint(request: Request):
     try:
         if not GEMINI_API_KEY:
-            raise ValueError("No se encontró la GEMINI_API_KEY en Render.")
+            raise ValueError("No se configuró GEMINI_API_KEY en Render.")
 
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
         
         if not user_text:
-            return {"response": "No recibí ningún mensaje de texto.", "reply": "No recibí ningún mensaje de texto."}
+            return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Intentar llamada con parámetro ?key= primero, y si es token con Authorization Header
-        url_with_key = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        # Usamos el modelo v1 actual compatible
+        model = genai.GenerativeModel("gemini-1.5-flash")
         
-        payload = {
-            "contents": [{
-                "parts": [{"text": user_text}]
-            }],
-            "systemInstruction": {
-                "parts": [{"text": "Sos Nico IA, un asistente virtual argentino, simpático, cercano y muy servicial."}]
-            }
-        }
-
-        # Probar envío con autenticación por Header (para tokens AQ...) y fallback por Query Param
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {GEMINI_API_KEY}"
-        }
-
-        response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
-            json=payload,
-            headers=headers,
-            timeout=30
+        response = model.generate_content(
+            user_text,
+            generation_config={"temperature": 0.7}
         )
-
-        # Si no acepta Bearer Token, probamos por Query Parameter sin Bearer
-        if response.status_code == 401:
-            response = requests.post(
-                url_with_key,
-                json=payload,
-                headers={"Content-Type": "application/json"},
-                timeout=30
-            )
-
-        res_data = response.json()
-
-        if response.status_code != 200:
-            print("--- ERROR GOOGLE API RESPONSE ---", res_data)
-            error_msg = res_data.get("error", {}).get("message", "Error en la API de Google")
-            raise HTTPException(status_code=response.status_code, detail=error_msg)
-
-        reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-        return {"response": reply_text, "reply": reply_text}
+        
+        return {"response": response.text, "reply": response.text}
 
     except Exception as e:
         print("--- ERROR EN CHAT ENDPOINT ---")
