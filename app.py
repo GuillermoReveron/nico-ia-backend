@@ -92,23 +92,50 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# Clima directo
-def get_weather_direct() -> str:
+# CLIMA GLOBAL E ILIMITADO PARA CUALQUIER CIUDAD DEL MUNDO
+def get_weather_global(user_text: str, default_location: str) -> str:
     try:
-        url = "https://api.open-meteo.com/v1/forecast?latitude=-37.67&longitude=-59.80&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FArgentina%2FBuenos_Aires"
-        res = requests.get(url, timeout=4)
-        if res.status_code == 200:
-            data = res.json()
-            daily = data.get("daily", {})
+        # Intentar extraer la ciudad que nombró el usuario
+        city_query = default_location.split(",")[0]
+        
+        # Buscar menciones de ciudades en la pregunta
+        text_words = user_text.replace("?", "").replace("¿", "").split()
+        for i, word in enumerate(text_words):
+            if word.lower() in ["en", "de", "para"] and i + 1 < len(text_words):
+                candidate = " ".join(text_words[i+1:])
+                if candidate.strip():
+                    city_query = candidate.strip()
+                    break
+
+        # 1. Geocodificar la ciudad a Lat/Lon
+        geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={urllib.parse.quote(city_query)}&count=1&language=es&format=json"
+        geo_res = requests.get(geo_url, timeout=3)
+        
+        lat, lon, name = None, None, city_query
+        if geo_res.status_code == 200 and geo_res.json().get("results"):
+            first = geo_res.json()["results"][0]
+            lat = first.get("latitude")
+            lon = first.get("longitude")
+            name = first.get("name", city_query)
+        else:
+            # Si no detecta la ciudad nombrada, usa Benito Juárez por defecto
+            lat, lon, name = -37.67, -59.80, "Benito Juárez"
+
+        # 2. Obtener pronóstico exacto de esa ubicación
+        weather_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto"
+        w_res = requests.get(weather_url, timeout=4)
+        
+        if w_res.status_code == 200:
+            daily = w_res.json().get("daily", {})
             max_temp = daily.get("temperature_2m_max", [None, None])[1]
             min_temp = daily.get("temperature_2m_min", [None, None])[1]
             rain = daily.get("precipitation_probability_max", [None, None])[1]
-            return f"DATOS CLIMA EN BENITO JUÁREZ PARA MAÑANA: Máxima {max_temp}°C, Mínima {min_temp}°C, Lluvia {rain}%."
+            return f"DATOS METEOROLÓGICOS REALES PARA MAÑANA EN {name.upper()}: Máxima {max_temp}°C, Mínima {min_temp}°C, Lluvia {rain}%."
     except Exception as e:
-        print("Error meteorológico directo:", e)
+        print("Error en clima global:", e)
     return ""
 
-# Función que crea los bytes puros de un PDF
+# Creador de PDF
 def create_pdf_binary(text_content: str) -> bytes:
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
@@ -144,7 +171,6 @@ async def serve_index():
         return FileResponse("index.html")
     return "<h1>Servidor Nico IA activo</h1>"
 
-# ENDPOINT PARA DESCARGA DIRECTA DE PDFS EN CELULARES
 @app.post("/api/download-pdf")
 async def download_pdf_endpoint(request: Request):
     try:
@@ -177,7 +203,7 @@ async def chat_endpoint(request: Request):
         if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # 1. FRENO DE MANO CORTESÍAS
+        # 1. FRENO DE MANO PARA CORTESÍAS
         clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
         polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
         
@@ -213,23 +239,23 @@ async def chat_endpoint(request: Request):
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. CLIMA Y WEB
+        # 4. CLIMA GLOBAL INTELIGENTE (Para cualquier ciudad)
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
 
         if is_weather:
-            direct_weather = get_weather_direct()
-            if direct_weather:
-                context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DEL TIEMPO:\n{direct_weather}\n"
+            global_weather = get_weather_global(user_text, user_location)
+            if global_weather:
+                context_web = f"\n\nINFORMACIÓN METEOROLÓGICA OBTENIDA EN TIEMPO REAL:\n{global_weather}\n"
 
         if not context_web and tavily_client and len(user_text.strip()) > 3:
             try:
-                search_query = f"{user_text} en {user_location} 2026"
+                search_query = f"{user_text} 2026"
                 search_result = tavily_client.search(query=search_query, max_results=1, search_depth="basic")
                 results = search_result.get("results", [])
                 if results:
-                    context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DE LA WEB PARA {user_location.upper()} (AÑO 2026):\n"
+                    context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DE LA WEB (AÑO 2026):\n"
                     for res in results:
                         context_web += f"- {res.get('title')}: {res.get('content')}\n"
             except Exception as e:
@@ -238,8 +264,9 @@ async def chat_endpoint(request: Request):
         # 5. MODELO PRINCIPAL (Llama 3.3)
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
-            f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
-            "Mantené la lógica estricta del diálogo. Si el usuario te pide un resumen de un documento, explicáselo en puntos clave muy claros. "
+            " Estamos en el año 2026. "
+            "Mantené la lógica estricta del diálogo. Si en el prompt recibís los datos del clima de una ciudad, respondé con amabilidad indicando la temperatura y pronóstico exacto de esa ciudad. "
+            "Si el usuario te pide un resumen de un documento, explicáselo en puntos clave muy claros. "
             "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar. NO usás la palabra 'che'."
         )
 
@@ -276,7 +303,6 @@ async def chat_endpoint(request: Request):
         if response.status_code == 200:
             reply_text = res_json["choices"][0]["message"]["content"]
 
-            # Genera la bandera para PDF si es resumen o archivo
             has_pdf = False
             pdf_triggers = ["pdf", "descargar", "informe", "documento", "estudiar", "resumen"]
             if any(w in user_text.lower() for w in pdf_triggers) or file_b64:
