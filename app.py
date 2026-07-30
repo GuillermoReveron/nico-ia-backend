@@ -92,7 +92,7 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# BÚSQUEDA METEOROLÓGICA EXACTA VÍA TAVILY (Lee reportes oficiales en vivo)
+# BÚSQUEDA METEOROLÓGICA CON CONTROL DE ERRORES EN TIEMPO REAL VÍA TAVILY
 def get_weather_exact(user_text: str, default_location: str) -> str:
     try:
         match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
@@ -106,10 +106,12 @@ def get_weather_exact(user_text: str, default_location: str) -> str:
             if results:
                 context_clima = f"DATOS REALES DEL TIEMPO OBTENIDOS EN TIEMPO REAL PARA {city_query.upper()}:\n"
                 for res in results:
-                    context_clima += f"- {res.get('title')}: {res.get('content')}\n"
+                    title = res.get('title', '')
+                    content = res.get('content', '')
+                    context_clima += f"- {title}: {content}\n"
                 return context_clima
     except Exception as e:
-        print("Error buscando clima exacto con Tavily:", e)
+        print("Aviso: Error o demora en Tavily al consultar clima:", e)
     return ""
 
 # Creador de PDF con formato limpio de paginado
@@ -162,7 +164,7 @@ async def download_pdf_endpoint(request: Request):
         return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
     except Exception as e:
         print("Error descargando PDF:", e)
-        return {"error": "No se pudo generar el archivo PDF."}
+        return Response(content=b"Error generando PDF", status_code=500)
 
 @app.post("/api/chat")
 async def chat_endpoint(request: Request):
@@ -217,7 +219,7 @@ async def chat_endpoint(request: Request):
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. CLIMA EXACTO CON BÚSQUEDA WEB
+        # 4. BÚSQUEDA DE CLIMA O INFORMACIÓN WEB
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
@@ -235,7 +237,7 @@ async def chat_endpoint(request: Request):
                 if results:
                     context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DE LA WEB (AÑO 2026):\n"
                     for res in results:
-                        context_web += f"- {res.get('title')}: {res.get('content')}\n"
+                        context_web += f"- {res.get('title', '')}: {res.get('content', '')}\n"
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
 
@@ -243,7 +245,7 @@ async def chat_endpoint(request: Request):
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             "Estamos en el año 2026. "
-            "Mantené la lógica estricta del diálogo. Si en el prompt recibís los datos del clima de una ciudad, responde con los datos meteorológicos exactos que leíste en los resultados de la web. "
+            "Mantené la lógica estricta del diálogo. Si en el prompt recibís los datos del clima de una ciudad, responde con los datos meteorológicos exactos que leíste de los resultados de la web. "
             "Respondé ÚNICAMENTE sobre la ciudad consultada. "
             "Si el usuario te pide un resumen de un documento o texto, explicáselo detalladamente en puntos clave. "
             "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar con el botón inferior. NO usás la palabra 'che'."
@@ -277,9 +279,9 @@ async def chat_endpoint(request: Request):
         }
 
         response = requests.post(url, json=payload, headers=headers, timeout=12)
-        res_json = response.json()
-
+        
         if response.status_code == 200:
+            res_json = response.json()
             reply_text = res_json["choices"][0]["message"]["content"]
 
             has_pdf = False
@@ -296,11 +298,12 @@ async def chat_endpoint(request: Request):
                 "has_pdf": has_pdf
             }
         else:
-            return {"response": "Error en el servidor.", "reply": "Error en el servidor."}
+            print("Error respuesta Groq:", response.status_code, response.text)
+            return {"response": "No pude procesar la consulta en este momento.", "reply": "No pude procesar la consulta en este momento."}
 
     except Exception as e:
         traceback.print_exc()
-        return {"response": "Error interno.", "reply": "Error interno."}
+        return {"response": "Error interno del servidor.", "reply": "Error interno del servidor."}
 
 if __name__ == "__main__":
     import uvicorn
