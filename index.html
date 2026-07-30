@@ -319,14 +319,15 @@
 
         .pdf-download-btn {
             display: inline-block;
-            margin-top: 8px;
-            padding: 8px 12px;
+            margin-top: 10px;
+            padding: 10px 14px;
             background: linear-gradient(135deg, #00c6ff, #0072ff);
             color: white;
             text-decoration: none;
-            border-radius: 8px;
-            font-size: 0.85rem;
+            border-radius: 10px;
+            font-size: 0.9rem;
             font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0, 198, 255, 0.3);
         }
 
         #visualizer-container {
@@ -522,6 +523,7 @@
 
         let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
         
+        // Abre sesión limpia de entrada
         let currentSessionId = 'session_' + Date.now();
         sessions[currentSessionId] = {
             title: "Nueva Charla",
@@ -793,6 +795,17 @@
             audioPlayer.play().catch(e => console.error("Audio error:", e));
         }
 
+        // DESCARGA DIRECTA Y REAL DE PDF EN ANDROID
+        function downloadPdfDirect(b64Pdf, filename = "Resumen_Nico_IA.pdf") {
+            const linkSource = `data:application/pdf;base64,${b64Pdf}`;
+            const downloadLink = document.createElement("a");
+            downloadLink.href = linkSource;
+            downloadLink.download = filename;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+
         async function sendMessage() {
             const inputField = document.getElementById('user-input');
             let message = inputField.value.trim();
@@ -863,7 +876,6 @@
                 const data = await response.json();
                 const botReply = data.reply || data.response || "No recibí respuesta.";
 
-                // Renderizado especial si viene una imagen en el texto (Markdown ![alt](url))
                 loadingDiv.innerHTML = '';
                 
                 const imgMarkdownRegex = /!\[.*?\]\((https:\/\/image\.pollinations\.ai\/.*?)\)/;
@@ -872,7 +884,7 @@
                 if (match) {
                     const cleanText = botReply.replace(imgMarkdownRegex, '').trim();
                     const textNode = document.createElement('div');
-                    textNode.innerText = cleanText || '¡Acá tenés la imagen generada!';
+                    textNode.innerText = cleanText || '¡Acá tenés la imagen lista!';
                     loadingDiv.appendChild(textNode);
 
                     const generatedImg = document.createElement('img');
@@ -903,13 +915,12 @@
         }
 
         function renderPdfButton(container, pdfB64) {
-            const a = document.createElement('a');
-            a.href = 'data:application/pdf;base64,' + pdfB64;
-            a.download = 'informe_nico_ia.pdf';
-            a.className = 'pdf-download-btn';
-            a.innerText = '📄 Descargar Informe PDF';
+            const btn = document.createElement('button');
+            btn.className = 'pdf-download-btn';
+            btn.innerHTML = '📄 Descargar Informe PDF';
+            btn.onclick = () => downloadPdfDirect(pdfB64, 'Resumen_Nico_IA.pdf');
             container.appendChild(document.createElement('br'));
-            container.appendChild(a);
+            container.appendChild(btn);
         }
 
         function appendMessageToUI(text, className, imgData = null, pdfB64 = null, videoData = null) {
@@ -917,14 +928,13 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
 
-            // Parsear si el mensaje grabado de antes contenía una imagen markdown
             const imgMarkdownRegex = /!\[.*?\]\((https:\/\/image\.pollinations\.ai\/.*?)\)/;
             const match = text ? text.match(imgMarkdownRegex) : null;
 
             if (match) {
                 const cleanText = text.replace(imgMarkdownRegex, '').trim();
                 const textNode = document.createElement('div');
-                textNode.innerText = cleanText || '¡Acá tenés la imagen generada!';
+                textNode.innerText = cleanText || '¡Acá tenés la imagen lista!';
                 messageDiv.appendChild(textNode);
 
                 const generatedImg = document.createElement('img');
