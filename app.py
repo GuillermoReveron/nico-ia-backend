@@ -5,6 +5,7 @@ import requests
 import urllib.parse
 import traceback
 import asyncio
+import re
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,10 +46,18 @@ async def generate_voice_male(text: str) -> str:
     fp.seek(0)
     return base64.b64encode(fp.read()).decode('utf-8')
 
-# Generar imágenes gratis
+# Generar imágenes gratis con Pollinations.ai
 def generate_free_image_url(prompt: str) -> str:
-    clean_prompt = urllib.parse.quote(prompt.strip())
-    return f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1024&height=1024&nologo=true"
+    # Limpiar el prompt de palabras de comando para dejar solo la descripción
+    clean_prompt = prompt.lower()
+    for word in ["generar", "generame", "crear", "creame", "dibujar", "dibujame", "haceme", "una", "un", "imagen", "foto", "de", "del", "la", "el"]:
+        clean_prompt = re.sub(rf'\b{word}\b', '', clean_prompt)
+    clean_prompt = clean_prompt.strip()
+    if not clean_prompt:
+        clean_prompt = prompt
+
+    encoded = urllib.parse.quote(clean_prompt)
+    return f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=1024&nologo=true"
 
 # Extracción de texto de documentos
 def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
@@ -82,7 +91,7 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# Búsqueda metereológica directa sin fallas (Open-Meteo para Benito Juárez)
+# Clima directo desde Open-Meteo para Benito Juárez
 def get_weather_direct() -> str:
     try:
         url = "https://api.open-meteo.com/v1/forecast?latitude=-37.67&longitude=-59.80&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=America%2FArgentina%2FBuenos_Aires"
@@ -95,7 +104,7 @@ def get_weather_direct() -> str:
             rain = daily.get("precipitation_probability_max", [None, None])[1]
             return f"DATOS CLIMA PARA MAÑANA EN BENITO JUÁREZ: Máxima de {max_temp}°C, Mínima de {min_temp}°C, Probabilidad de lluvia: {rain}%."
     except Exception as e:
-        print("Error metereológico directo:", e)
+        print("Error meteorológico directo:", e)
     return ""
 
 def create_pdf_bytes(text_content: str) -> bytes:
@@ -148,8 +157,7 @@ async def chat_endpoint(request: Request):
         if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # --- FRENO DE MANO PARA AGRADECIMIENTOS Y CORTESÍAS ---
-        # Si el usuario dice 'no', 'gracias', 'no gracias', etc., responde directo sin memoria ni búsquedas raras.
+        # 1. FRENO DE MANO PARA AGRADECIMIENTOS Y CORTESÍAS
         clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
         polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
         
@@ -158,9 +166,15 @@ async def chat_endpoint(request: Request):
             audio_base64 = await generate_voice_male(reply_text)
             return {"response": reply_text, "reply": reply_text, "audio": audio_base64}
 
-        # Generación de imagen
-        image_keywords = ["generar imagen", "crear imagen", "dibujar", "haceme una foto de", "crear foto de", "dibujame"]
-        is_image_request = any(kw in user_text.lower() for kw in image_keywords)
+        # 2. DETECCIÓN FLEXIBLE DE PEDIDO DE IMÁGENES (Filtro ampliado)
+        image_triggers = [
+            r"generar.*imagen", r"crear.*imagen", r"hacer.*imagen", r"haceme.*imagen",
+            r"generar.*foto", r"crear.*foto", r"hacer.*foto", r"haceme.*foto",
+            r"dibujar", r"dibujame", r"hazme.*dibujo", r"graficame", r"haz.*un.*dibujo",
+            r"imagen de", r"foto de", r"dibujo de"
+        ]
+        
+        is_image_request = any(re.search(pattern, user_text.lower()) for pattern in image_triggers)
 
         if is_image_request:
             img_url = generate_free_image_url(user_text)
@@ -172,13 +186,14 @@ async def chat_endpoint(request: Request):
                 "audio": audio_base64
             }
 
+        # 3. PROCESAR DOCUMENTOS
         document_context = ""
         if file_b64:
             extracted = extract_text_from_file_b64(file_b64, filename)
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:5000]}"
 
-        # Búsqueda web / clima infalible
+        # 4. BÚSQUEDA WEB / CLIMA
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
@@ -200,6 +215,7 @@ async def chat_endpoint(request: Request):
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
 
+        # 5. PROMPT IA (Llama 3.3)
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"El usuario te habla desde: {user_location}. Estamos en el año 2026. "
