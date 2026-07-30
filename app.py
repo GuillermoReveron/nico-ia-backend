@@ -33,10 +33,10 @@ async def chat_endpoint(request: Request):
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
         
         if not user_text:
-            return {"response": "No recibí texto.", "reply": "No recibí texto."}
+            return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Solo modelos válidos en v1beta
-        models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
+        # Probamos con la serie Pro en la API v1beta
+        models_to_try = ["gemini-1.5-pro", "gemini-1.0-pro", "gemini-2.0-flash"]
         
         reply_text = None
 
@@ -53,29 +53,30 @@ async def chat_endpoint(request: Request):
             }
 
             headers = {"Content-Type": "application/json"}
-            response = requests.post(url, json=payload, headers=headers, timeout=20)
+            response = requests.post(url, json=payload, headers=headers, timeout=25)
             res_data = response.json()
 
             if response.status_code == 200:
                 try:
                     reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                    print(f"--- ÉXITO CON MODELO: {model_name} ---")
                     break
                 except KeyError:
                     continue
             elif response.status_code == 429:
-                print(f"Cuota saturada temporalmente en {model_name}, probando alternativo...")
+                print(f"Cuota saturada en {model_name}, cambiando a modelo Pro alternativo...")
                 continue
             else:
                 print(f"Error {response.status_code} en {model_name}:", res_data)
 
         if not reply_text:
-            reply_text = "¡Hola che! Aguardame unos 30 segundos que Google me limitó temporalmente las respuestas. Probá escribirme de nuevo en un ratito."
+            reply_text = "Hola che, dame unos 30 segundos que Google me pausó temporalmente las respuestas por la cuota. Volvé a probar en un toque."
 
         return {"response": reply_text, "reply": reply_text}
 
     except Exception as e:
         traceback.print_exc()
-        return {"response": "Tuve un problema temporal. Reintentá en un ratito.", "reply": "Tuve un problema temporal. Reintentá en un ratito."}
+        return {"response": "Tuve un inconveniente temporal. Intentá de nuevo en unos instantes.", "reply": "Tuve un inconveniente temporal. Intentá de nuevo en unos instantes."}
 
 if __name__ == "__main__":
     import uvicorn
