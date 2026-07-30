@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Nico IA</title>
     <style>
-        /* Bloqueo estricto de pantalla para evitar desplazamientos y descuadres */
         * {
             box-sizing: border-box;
             margin: 0;
@@ -19,7 +18,7 @@
             overflow-x: hidden;
             background-color: #121212;
             color: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
         body {
@@ -38,7 +37,6 @@
             flex-shrink: 0;
         }
 
-        /* Contenedor principal de mensajes */
         #chat-container {
             flex: 1;
             padding: 12px;
@@ -70,7 +68,6 @@
             border-bottom-left-radius: 4px;
         }
 
-        /* Barra de entrada de texto e íconos */
         #input-container {
             background-color: #1f1f1f;
             padding: 8px 10px;
@@ -105,11 +102,6 @@
             align-items: center;
             justify-content: center;
             color: #4da6ff;
-            transition: transform 0.1s ease;
-        }
-
-        .icon-btn:active {
-            transform: scale(0.9);
         }
 
         #send-btn {
@@ -117,18 +109,10 @@
             font-weight: bold;
         }
 
-        /* Indicador de micrófono encendido */
         .recording {
             color: #ff4444 !important;
-            animation: pulse 1s infinite alternate;
         }
 
-        @keyframes pulse {
-            from { opacity: 1; }
-            to { opacity: 0.4; }
-        }
-
-        /* Inputs de archivo ocultos */
         .hidden-input {
             display: none;
         }
@@ -142,25 +126,20 @@
         <div class="message bot-msg">¡Hola! Soy Nico IA. ¿En qué te puedo ayudar hoy?</div>
     </div>
 
-    <!-- Barra inferior con todos las herramientas -->
     <div id="input-container">
-        <!-- 1. Botón Cámara Nativa -->
-        <button class="icon-btn" id="cam-btn" title="Tomar foto">📷</button>
+        <!-- Cámara -->
+        <button class="icon-btn" id="cam-btn" title="Cámara">📷</button>
+        <!-- Adjuntar -->
+        <button class="icon-btn" id="attach-btn" title="Adjuntar">📎</button>
+        <!-- Micrófono -->
+        <button class="icon-btn" id="mic-btn" title="Dictar">🎙️</button>
         
-        <!-- 2. Botón Adjuntar Archivo/Galería -->
-        <button class="icon-btn" id="attach-btn" title="Adjuntar archivo">📎</button>
-        
-        <!-- 3. Botón Micrófono / Reconocimiento de voz -->
-        <button class="icon-btn" id="mic-btn" title="Dictar mensaje">🎙️</button>
-        
-        <!-- Campo de Texto -->
         <input type="text" id="user-input" placeholder="Escribí un mensaje..." />
         
-        <!-- 4. Botón Enviar -->
+        <!-- Enviar -->
         <button class="icon-btn" id="send-btn" title="Enviar">➔</button>
     </div>
 
-    <!-- Triggers de archivos ocultos -->
     <input type="file" id="camera-file-input" class="hidden-input" accept="image/*" capture="environment">
     <input type="file" id="attach-file-input" class="hidden-input" accept="*/*">
 
@@ -168,24 +147,36 @@
         const chatContainer = document.getElementById('chat-container');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
-        
         const camBtn = document.getElementById('cam-btn');
         const attachBtn = document.getElementById('attach-btn');
         const micBtn = document.getElementById('mic-btn');
-
         const cameraFileInput = document.getElementById('camera-file-input');
         const attachFileInput = document.getElementById('attach-file-input');
 
-        // Función para agregar mensajes al chat
+        // Función para que la app HABLE (Síntesis de voz)
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel(); // Detener lecturas previas
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'es-AR';
+                utterance.rate = 1.0;
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
         function addMessage(text, sender) {
             const msgDiv = document.createElement('div');
             msgDiv.classList.add('message', sender === 'user' ? 'user-msg' : 'bot-msg');
             msgDiv.innerText = text;
             chatContainer.appendChild(msgDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Si responde el bot, que lo lea en voz alta
+            if (sender === 'bot') {
+                speakText(text);
+            }
         }
 
-        // Función para enviar texto al servidor
         async function sendMessage() {
             const text = userInput.value.trim();
             if (!text) return;
@@ -201,87 +192,51 @@
                 });
 
                 const data = await response.json();
-                addMessage(data.reply || data.response || "No recibí respuesta.", 'bot');
+                const reply = data.reply || data.response || "No recibí respuesta.";
+                addMessage(reply, 'bot');
             } catch (err) {
-                addMessage("Error de conexión con el servidor.", 'bot');
+                addMessage("Error de conexión con Nico IA.", 'bot');
             }
         }
 
         sendBtn.addEventListener('click', sendMessage);
         userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendMessage(); });
 
-        // 📷 1. Acción de la CÁMARA
-        camBtn.addEventListener('click', () => {
-            cameraFileInput.click();
-        });
+        // Acciones de botones
+        camBtn.addEventListener('click', () => cameraFileInput.click());
+        attachBtn.addEventListener('click', () => attachFileInput.click());
 
         cameraFileInput.addEventListener('change', (e) => {
             if (e.target.files && e.target.files[0]) {
-                const fileName = e.target.files[0].name;
-                addMessage(`📷 Foto capturada: ${fileName}`, 'user');
+                addMessage(`📷 Foto cargada: ${e.target.files[0].name}`, 'user');
             }
-        });
-
-        // 📎 2. Acción de ADJUNTAR ARCHIVO / GALERÍA
-        attachBtn.addEventListener('click', () => {
-            attachFileInput.click();
         });
 
         attachFileInput.addEventListener('change', (e) => {
             if (e.target.files && e.target.files[0]) {
-                const fileName = e.target.files[0].name;
-                addMessage(`📎 Archivo adjunto: ${fileName}`, 'user');
+                addMessage(`📎 Archivo adjunto: ${e.target.files[0].name}`, 'user');
             }
         });
 
-        // 🎙️ 3. Acción del MICRÓFONO (Reconocimiento de voz nativo Web Speech API)
+        // Micrófono / Reconocimiento de Voz
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.lang = 'es-AR';
-            recognition.continuous = false;
-            recognition.interimResults = false;
-
-            let isRecording = false;
-
+            
             micBtn.addEventListener('click', () => {
-                if (!isRecording) {
-                    recognition.start();
-                    micBtn.classList.add('recording');
-                    userInput.placeholder = "Escuchando...";
-                    isRecording = true;
-                } else {
-                    recognition.stop();
-                    micBtn.classList.remove('recording');
-                    userInput.placeholder = "Escribí un mensaje...";
-                    isRecording = false;
-                }
+                recognition.start();
+                micBtn.classList.add('recording');
             });
 
             recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                userInput.value = transcript;
+                userInput.value = event.results[0][0].transcript;
                 micBtn.classList.remove('recording');
-                userInput.placeholder = "Escribí un mensaje...";
-                isRecording = false;
+                sendMessage(); // Envía automáticamente al terminar de hablar
             };
 
-            recognition.onerror = () => {
-                micBtn.classList.remove('recording');
-                userInput.placeholder = "Escribí un mensaje...";
-                isRecording = false;
-            };
-
-            recognition.onend = () => {
-                micBtn.classList.remove('recording');
-                userInput.placeholder = "Escribí un mensaje...";
-                isRecording = false;
-            };
-        } else {
-            micBtn.addEventListener('click', () => {
-                alert("El reconocimiento de voz no está soportado en este navegador.");
-            });
+            recognition.onerror = () => micBtn.classList.remove('recording');
+            recognition.onend = () => micBtn.classList.remove('recording');
         }
     </script>
 </body>
