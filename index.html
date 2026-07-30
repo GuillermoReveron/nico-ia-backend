@@ -2,35 +2,26 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Nico IA</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        body { background-color: #121212; color: #e0e0e0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background-color: #121212; color: #e0e0e0; display: flex; flex-direction: column; }
         
-        header { background-color: #1f1f1f; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; z-index: 10; }
-        h1 { font-size: 1.2rem; color: #fff; font-weight: 600; }
-        .voice-btn { background-color: #2e7d32; color: white; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 0.85rem; font-weight: bold; }
+        header { background-color: #1f1f1f; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
+        h1 { font-size: 1.1rem; color: #fff; font-weight: 600; }
+        .voice-btn { background-color: #2e7d32; color: white; border: none; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-size: 0.8rem; font-weight: bold; }
         
-        #chat-container { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background-color: #121212; }
-        .message { max-width: 80%; padding: 12px 16px; border-radius: 18px; line-height: 1.4; word-wrap: break-word; font-size: 0.95rem; }
+        #chat-container { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 12px; background-color: #121212; width: 100%; }
+        .message { max-width: 85%; padding: 10px 14px; border-radius: 16px; line-height: 1.4; word-wrap: break-word; font-size: 0.95rem; }
         .user-message { background-color: #1565c0; color: white; align-self: flex-end; border-bottom-right-radius: 4px; }
         .bot-message { background-color: #2a2a2a; color: #e0e0e0; align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid #3d3d3d; }
         
-        .preview-container { max-width: 200px; margin-top: 8px; border-radius: 8px; overflow: hidden; border: 2px solid #444; display: none; }
-        .preview-container img { width: 100%; height: auto; display: block; }
-        .file-info { font-size: 0.8rem; color: #aaa; margin-top: 5px; }
-
-        #input-container { background-color: #1f1f1f; padding: 12px 15px; display: flex; gap: 10px; align-items: center; border-top: 1px solid #333; }
-        .attach-btn, .camera-btn, .mic-btn { background: #2a2a2a; border: 1px solid #3d3d3d; color: #aaa; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.3rem; }
+        #input-container { background-color: #1f1f1f; padding: 10px; display: flex; gap: 8px; align-items: center; border-top: 1px solid #333; width: 100%; }
+        .attach-btn, .camera-btn, .mic-btn { background: #2a2a2a; border: 1px solid #3d3d3d; color: #aaa; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; flex-shrink: 0; }
         
-        input[type="text"] { flex: 1; background-color: #2a2a2a; border: 1px solid #3d3d3d; color: white; padding: 12px 18px; border-radius: 25px; outline: none; font-size: 1rem; }
-        .send-btn { background-color: #0084ff; border: none; color: white; width: 42px; height: 42px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.2rem; }
-
-        #camera-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
-        #video-preview { width: 90%; max-width: 500px; border-radius: 12px; background: #000; }
-        #capture-btn { background: #c62828; color: white; border: none; width: 65px; height: 65px; border-radius: 50%; margin-top: 20px; cursor: pointer; border: 4px solid white; }
-        #close-camera { position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; font-size: 2rem; cursor: pointer; }
+        input[type="text"] { flex: 1; min-width: 0; background-color: #2a2a2a; border: 1px solid #3d3d3d; color: white; padding: 10px 14px; border-radius: 25px; outline: none; font-size: 0.95rem; }
+        .send-btn { background-color: #0084ff; border: none; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 1.1rem; flex-shrink: 0; }
     </style>
 </head>
 <body>
@@ -40,37 +31,19 @@
     </header>
 
     <div id="chat-container">
-        <div class="message bot-message">¡Buenas! Soy Nico IA. Podés hablarme por micrófono 🎙️, sacar fotos 📷 o adjuntar archivos 📎. ¿En qué laburamos hoy?</div>
-    </div>
-
-    <div style="padding: 0 15px; background: #121212;">
-        <div id="attachment-preview" class="preview-container">
-            <img id="preview-img" src="" alt="Previsualización">
-            <div id="file-data" class="file-info" style="padding: 5px;"></div>
-        </div>
+        <div class="message bot-message">¡Buenas! Soy Nico IA. Podés hablarme por micrófono 🎙️, sacar fotos 📷 o escribir. ¿En qué laburamos hoy?</div>
     </div>
 
     <div id="input-container">
-        <input type="file" id="file-input" style="display:none" onchange="handleFileSelect(event)" accept="*/*">
-        
-        <button class="attach-btn" onclick="document.getElementById('file-input').click()" title="Adjuntar archivo">📎</button>
-        <button class="camera-btn" onclick="openCamera()" title="Cámara">📷</button>
-        <button class="mic-btn" id="mic-btn" onclick="startMic()" title="Micrófono">🎙️</button>
-        
+        <input type="file" id="file-input" style="display:none" onchange="handleFileSelect(event)">
+        <button class="attach-btn" onclick="document.getElementById('file-input').click()">📎</button>
+        <button class="mic-btn" id="mic-btn" onclick="startMic()">🎙️</button>
         <input type="text" id="user-input" placeholder="Escribí o hablá..." onkeypress="handleKeyPress(event)">
         <button class="send-btn" onclick="sendMessage()">➤</button>
     </div>
 
-    <div id="camera-modal">
-        <button id="close-camera" onclick="closeCamera()">✕</button>
-        <video id="video-preview" autoplay playsinline></video>
-        <canvas id="capture-canvas" style="display:none;"></canvas>
-        <button id="capture-btn" onclick="capturePhoto()"></button>
-    </div>
-
     <script>
         let voiceEnabled = true;
-        let currentFile = null;
 
         function toggleVoice() {
             voiceEnabled = !voiceEnabled;
@@ -84,111 +57,55 @@
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'es-AR';
-            utterance.rate = 1.0;
             window.speechSynthesis.speak(utterance);
         }
 
-        function appendMessage(text, isUser, file = null) {
+        function appendMessage(text, isUser) {
             const container = document.getElementById('chat-container');
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
             msgDiv.textContent = text;
-
-            if (file) {
-                const fileInfo = document.createElement('div');
-                fileInfo.className = 'file-info';
-                fileInfo.innerHTML = `📎 <strong>${file.name}</strong>`;
-                msgDiv.appendChild(fileInfo);
-            }
-
             container.appendChild(msgDiv);
             container.scrollTop = container.scrollHeight;
         }
 
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            currentFile = file;
-            const previewContainer = document.getElementById('attachment-preview');
-            const fileData = document.getElementById('file-data');
-            previewContainer.style.display = 'block';
-            fileData.textContent = `📎 ${file.name}`;
-        }
-
-        function clearAttachment() {
-            currentFile = null;
-            document.getElementById('attachment-preview').style.display = 'none';
-            document.getElementById('file-input').value = '';
-        }
-
-        let stream = null;
-        async function openCamera() {
-            const modal = document.getElementById('camera-modal');
-            const video = document.getElementById('video-preview');
-            modal.style.display = 'flex';
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-                video.srcObject = stream;
-            } catch (err) {
-                alert("No se pudo acceder a la cámara.");
-                closeCamera();
-            }
-        }
-
-        function closeCamera() {
-            const modal = document.getElementById('camera-modal');
-            const video = document.getElementById('video-preview');
-            if (stream) stream.getTracks().forEach(track => track.stop());
-            video.srcObject = null;
-            modal.style.display = 'none';
-        }
-
-        function capturePhoto() {
-            const video = document.getElementById('video-preview');
-            const canvas = document.getElementById('capture-canvas');
-            const context = canvas.getContext('2d');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            canvas.toBlob((blob) => {
-                const file = new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                currentFile = file;
-                document.getElementById('attachment-preview').style.display = 'block';
-                document.getElementById('file-data').textContent = `📷 Foto capturada`;
-                closeCamera();
-            }, 'image/jpeg');
-        }
-
         function startMic() {
-            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-                alert('Reconocimiento de voz no soportado.');
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert('El reconocimiento de voz no está disponible en este dispositivo.');
                 return;
             }
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             const recognition = new SpeechRecognition();
             recognition.lang = 'es-AR';
             recognition.start();
 
+            const micBtn = document.getElementById('mic-btn');
+            micBtn.style.backgroundColor = '#c62828';
+
             recognition.onresult = (event) => {
-                document.getElementById('user-input').value = event.results[0][0].transcript;
+                const transcript = event.results[0][0].transcript;
+                document.getElementById('user-input').value = transcript;
+                micBtn.style.backgroundColor = '#2a2a2a';
                 sendMessage();
             };
+
+            recognition.onerror = () => { micBtn.style.backgroundColor = '#2a2a2a'; };
+            recognition.onend = () => { micBtn.style.backgroundColor = '#2a2a2a'; };
         }
 
         async function sendMessage() {
             const input = document.getElementById('user-input');
             const text = input.value.trim();
-            if (!text && !currentFile) return;
+            if (!text) return;
 
-            appendMessage(text || `Archivo: ${currentFile.name}`, true, currentFile);
-            clearAttachment();
+            appendMessage(text, true);
             input.value = '';
 
             try {
-                const response = await fetch('/api/chat', {
+                const response = await fetch('https://nico-ia-1.onrender.com/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text || "Analizar adjunto" })
+                    body: JSON.stringify({ message: text })
                 });
 
                 if (!response.ok) throw new Error();
