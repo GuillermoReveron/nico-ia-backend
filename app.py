@@ -38,15 +38,14 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Intentar con nombres de modelos conocidos de Gemini
-        target_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.0-pro"]
+        # Modelos de respaldo
+        target_models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"]
         
-        # Buscar el primer modelo activo disponible en tu cuenta
         selected_model_name = None
         try:
-            available_models = [m.name for m in genai.list_models() if "generateContent" in m.supported_generation_methods]
+            # Obtener modelos disponibles y limpiar el prefijo 'models/'
+            available_models = [m.name.replace("models/", "") for m in genai.list_models() if "generateContent" in m.supported_generation_methods]
             if available_models:
-                # Priorizar si coincide con los nuestros, sino tomar el primero disponible
                 for tm in target_models:
                     matching = [m for m in available_models if tm in m]
                     if matching:
@@ -55,10 +54,10 @@ async def chat_endpoint(request: Request):
                 if not selected_model_name:
                     selected_model_name = available_models[0]
         except Exception as e:
-            print("No se pudo listar modelos, probando default:", e)
-            selected_model_name = "gemini-1.5-flash-latest"
+            print("No se pudo listar modelos, usando default:", e)
+            selected_model_name = "gemini-2.5-flash"
 
-        print(f"--- USANDO MODELO: {selected_model_name} ---")
+        print(f"--- USANDO MODELO LIMPIO: {selected_model_name} ---")
 
         model = genai.GenerativeModel(
             model_name=selected_model_name,
