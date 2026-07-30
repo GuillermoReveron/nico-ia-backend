@@ -308,11 +308,11 @@
             border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        .preview-img, .preview-video {
+        .preview-img, .generated-img, .preview-video {
             max-width: 100%;
-            max-height: 200px;
+            max-height: 250px;
             border-radius: 10px;
-            margin-top: 6px;
+            margin-top: 8px;
             display: block;
             object-fit: contain;
         }
@@ -522,7 +522,6 @@
 
         let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
         
-        // SIEMPRE crea una sesión nueva cada vez que abre la app de cero
         let currentSessionId = 'session_' + Date.now();
         sessions[currentSessionId] = {
             title: "Nueva Charla",
@@ -864,7 +863,25 @@
                 const data = await response.json();
                 const botReply = data.reply || data.response || "No recibí respuesta.";
 
-                loadingDiv.innerText = botReply;
+                // Renderizado especial si viene una imagen en el texto (Markdown ![alt](url))
+                loadingDiv.innerHTML = '';
+                
+                const imgMarkdownRegex = /!\[.*?\]\((https:\/\/image\.pollinations\.ai\/.*?)\)/;
+                const match = botReply.match(imgMarkdownRegex);
+
+                if (match) {
+                    const cleanText = botReply.replace(imgMarkdownRegex, '').trim();
+                    const textNode = document.createElement('div');
+                    textNode.innerText = cleanText || '¡Acá tenés la imagen generada!';
+                    loadingDiv.appendChild(textNode);
+
+                    const generatedImg = document.createElement('img');
+                    generatedImg.src = match[1];
+                    generatedImg.className = 'generated-img';
+                    loadingDiv.appendChild(generatedImg);
+                } else {
+                    loadingDiv.innerText = botReply;
+                }
 
                 const botMsgObj = { sender: 'bot', text: botReply };
                 if (data.pdf) {
@@ -899,7 +916,24 @@
             const chatContainer = document.getElementById('chat-container');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${className}`;
-            messageDiv.innerText = text;
+
+            // Parsear si el mensaje grabado de antes contenía una imagen markdown
+            const imgMarkdownRegex = /!\[.*?\]\((https:\/\/image\.pollinations\.ai\/.*?)\)/;
+            const match = text ? text.match(imgMarkdownRegex) : null;
+
+            if (match) {
+                const cleanText = text.replace(imgMarkdownRegex, '').trim();
+                const textNode = document.createElement('div');
+                textNode.innerText = cleanText || '¡Acá tenés la imagen generada!';
+                messageDiv.appendChild(textNode);
+
+                const generatedImg = document.createElement('img');
+                generatedImg.src = match[1];
+                generatedImg.className = 'generated-img';
+                messageDiv.appendChild(generatedImg);
+            } else {
+                messageDiv.innerText = text || '';
+            }
 
             if (imgData) {
                 const imgEl = document.createElement('img');
