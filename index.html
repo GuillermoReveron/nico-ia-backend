@@ -165,6 +165,7 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
+            width: 100%;
         }
 
         .message {
@@ -192,11 +193,12 @@
         }
 
         .preview-img {
-            max-width: 200px;
+            max-width: 100%;
             max-height: 200px;
             border-radius: 10px;
             margin-top: 6px;
             display: block;
+            object-fit: contain;
         }
 
         .pdf-download-btn {
@@ -215,13 +217,13 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 65px;
+            height: 55px;
             flex-shrink: 0;
         }
 
         .ai-orb {
-            width: 50px;
-            height: 50px;
+            width: 45px;
+            height: 45px;
             border-radius: 50%;
             background: linear-gradient(135deg, #7F00FF, #E100FF, #00d2ff);
             background-size: 200% 200%;
@@ -233,7 +235,7 @@
 
         .ai-orb.speaking {
             animation: orbPulse 0.8s ease-in-out infinite alternate, orbGlow 1.5s ease infinite alternate;
-            transform: scale(1.2);
+            transform: scale(1.15);
             box-shadow: 0 0 25px rgba(225, 0, 255, 0.9);
         }
 
@@ -245,46 +247,52 @@
 
         @keyframes orbPulse {
             0% { transform: scale(1); }
-            100% { transform: scale(1.2); }
+            100% { transform: scale(1.15); }
         }
 
+        /* Barra de entrada compacta para evitar desbordes */
         #input-container {
             display: flex;
             align-items: center;
-            padding: 10px;
+            padding: 8px 6px;
             background-color: #121824;
             border-top: 1px solid rgba(255, 255, 255, 0.05);
-            gap: 6px;
+            gap: 4px;
             flex-shrink: 0;
+            width: 100%;
+            box-sizing: border-box;
         }
 
         .action-btn {
             background: transparent;
             border: none;
             color: #94a3b8;
-            width: 38px;
-            height: 38px;
+            width: 34px;
+            height: 34px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            flex-shrink: 0;
+            padding: 0;
         }
 
         .action-btn svg {
-            width: 20px;
-            height: 20px;
+            width: 18px;
+            height: 18px;
             fill: currentColor;
         }
 
         #user-input {
             flex: 1;
-            padding: 10px 14px;
+            min-width: 0;
+            padding: 8px 12px;
             border-radius: 20px;
             border: 1px solid rgba(255, 255, 255, 0.1);
             background-color: #1a2332;
             color: #ffffff;
-            font-size: 0.95rem;
+            font-size: 0.9rem;
             outline: none;
         }
 
@@ -292,13 +300,14 @@
             background: linear-gradient(135deg, #00c6ff, #0072ff);
             color: #ffffff;
             border: none;
-            width: 38px;
-            height: 38px;
+            width: 36px;
+            height: 36px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            flex-shrink: 0;
         }
 
         #file-input, #camera-direct-input, #gallery-input { display: none; }
@@ -331,19 +340,19 @@
     </div>
 
     <div id="input-container">
-        <!-- 1. Adjuntar Documentos (PDF, TXT, Word) -->
+        <!-- 1. Documentos -->
         <button class="action-btn" onclick="document.getElementById('file-input').click()" title="Adjuntar Documento">
             <svg viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.48-2.02-4.5-4.5-4.5S6 2.52 6 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-0.5z"/></svg>
         </button>
         <input type="file" id="file-input" accept=".txt,.pdf,.doc,.docx,.csv,.json" onchange="handleDocumentSelect(event)">
 
-        <!-- 2. Cámara Directa (Forzada a abrir capturadora en vivo) -->
-        <button class="action-btn" onclick="document.getElementById('camera-direct-input').click()" title="Sacar Foto">
+        <!-- 2. Cámara (Activador directo de cámara en vivo) -->
+        <button class="action-btn" onclick="triggerCamera()" title="Sacar Foto">
             <svg viewBox="0 0 24 24"><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
-        <input type="file" id="camera-direct-input" accept="image/*" capture="environment" onchange="handleMediaSelected(event)">
+        <input type="file" id="camera-direct-input" accept="image/*" capture="camera" onchange="handleMediaSelected(event)">
 
-        <!-- 3. Abrir Galería -->
+        <!-- 3. Galería -->
         <button class="action-btn" onclick="document.getElementById('gallery-input').click()" title="Buscar en Galería">
             <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
         </button>
@@ -357,7 +366,7 @@
         <input type="text" id="user-input" placeholder="Escribí un mensaje..." autocomplete="off">
 
         <button id="send-btn" onclick="sendMessage()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
         </button>
     </div>
 
@@ -389,6 +398,12 @@
             navigator.geolocation.getCurrentPosition((pos) => {
                 userLocation = `Latitud ${pos.coords.latitude}, Longitud ${pos.coords.longitude} (Benito Juárez, Buenos Aires, Argentina)`;
             }, (err) => console.log("GPS por defecto"));
+        }
+
+        function triggerCamera() {
+            const camInput = document.getElementById('camera-direct-input');
+            camInput.value = ''; // Reset
+            camInput.click();
         }
 
         function saveSessions() {
