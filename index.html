@@ -54,6 +54,37 @@
             opacity: 0.4;
         }
 
+        /* --- ÓVALO ANIMADO DE VOZ --- */
+        #voice-indicator-container {
+            display: none;
+            justify-content: center;
+            align-items: center;
+            padding: 10px 0;
+            background-color: #181818;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .voice-oval {
+            width: 70px;
+            height: 28px;
+            border-radius: 50px;
+            background: linear-gradient(135deg, #007acc, #6c757d, #004080);
+            background-size: 200% 200%;
+            box-shadow: 0 0 12px rgba(0, 122, 204, 0.6);
+            animation: pulseOval 1.2s infinite ease-in-out, gradientShift 3s infinite alternate;
+        }
+
+        @keyframes pulseOval {
+            0% { transform: scale(0.92); box-shadow: 0 0 8px rgba(0, 122, 204, 0.4); }
+            50% { transform: scale(1.12); box-shadow: 0 0 18px rgba(0, 122, 204, 0.8); }
+            100% { transform: scale(0.92); box-shadow: 0 0 8px rgba(0, 122, 204, 0.4); }
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 100% 50%; }
+        }
+
         #chat-container {
             flex: 1;
             padding: 12px;
@@ -139,9 +170,13 @@
 
     <header>
         <span class="title">Nico IA</span>
-        <!-- Parlantito arriba a la derecha -->
         <button id="tts-btn" title="Activar/Desactivar Voz">🔊</button>
     </header>
+
+    <!-- Indicador visual del óvalo que se mueve al hablar -->
+    <div id="voice-indicator-container">
+        <div class="voice-oval"></div>
+    </div>
 
     <div id="chat-container">
         <div class="message bot-msg">¡Hola! Soy Nico IA. ¿En qué te puedo ayudar hoy?</div>
@@ -168,18 +203,20 @@
         const attachBtn = document.getElementById('attach-btn');
         const micBtn = document.getElementById('mic-btn');
         const ttsBtn = document.getElementById('tts-btn');
+        const voiceIndicator = document.getElementById('voice-indicator-container');
+        
         const cameraFileInput = document.getElementById('camera-file-input');
         const attachFileInput = document.getElementById('attach-file-input');
 
         let ttsEnabled = true;
 
-        // Alternar parlantito encendido/apagado
         ttsBtn.addEventListener('click', () => {
             ttsEnabled = !ttsEnabled;
             ttsBtn.innerText = ttsEnabled ? '🔊' : '🔇';
             ttsBtn.classList.toggle('muted', !ttsEnabled);
             if (!ttsEnabled && 'speechSynthesis' in window) {
                 window.speechSynthesis.cancel();
+                voiceIndicator.style.display = 'none';
             }
         });
 
@@ -189,6 +226,21 @@
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = 'es-AR';
                 utterance.rate = 1.0;
+
+                // Mostrar el óvalo animado azul/gris mientras habla
+                utterance.onstart = () => {
+                    voiceIndicator.style.display = 'flex';
+                };
+
+                // Ocultar el óvalo al terminar
+                utterance.onend = () => {
+                    voiceIndicator.style.display = 'none';
+                };
+
+                utterance.onerror = () => {
+                    voiceIndicator.style.display = 'none';
+                };
+
                 window.speechSynthesis.speak(utterance);
             }
         }
