@@ -36,9 +36,7 @@ async def chat_endpoint(request: Request):
         if not user_text:
             return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
 
-        # Modelos oficial y secundario habilitados en Gemini API v1beta
         models_to_try = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
-        
         reply_text = None
 
         for model_name in models_to_try:
@@ -55,36 +53,39 @@ async def chat_endpoint(request: Request):
 
             headers = {"Content-Type": "application/json"}
             
-            # Reintento si la API devuelve 429 por límite por minuto
-            for attempt in range(2):
-                response = requests.post(url, json=payload, headers=headers, timeout=25)
-                res_data = response.json()
+            # Intento 1 directo
+            response = requests.post(url, json=payload, headers=headers, timeout=25)
+            res_data = response.json()
 
-                if response.status_code == 200:
+            if response.status_code == 200:
+                try:
+                    reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
+                    print(f"--- ÉXITO CON: {model_name} ---")
+                    break
+                except KeyError:
+                    pass
+            elif response.status_code == 429:
+                print(f"Cuota agotada en {model_name}. Esperando 10s para liberar el canal...")
+                time.sleep(10)
+                # Reintento tras la pausa
+                res_retry = requests.post(url, json=payload, headers=headers, timeout=25)
+                retry_data = res_retry.json()
+                if res_retry.status_code == 200:
                     try:
-                        reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
-                        print(f"--- ÉXITO CON: {model_name} ---")
+                        reply_text = retry_data["candidates"][0]["content"]["parts"][0]["text"]
+                        print(f"--- ÉXITO TRAS ESPERA CON: {model_name} ---")
                         break
                     except KeyError:
-                        break
-                elif response.status_code == 429:
-                    print(f"Cuota temporal excedida en {model_name}. Esperando 3s... (Intento {attempt + 1})")
-                    time.sleep(3)
-                else:
-                    print(f"Error {response.status_code} en {model_name}:", res_data)
-                    break
-
-            if reply_text:
-                break
+                        pass
 
         if not reply_text:
-            reply_text = "¡Hola che! Google pausó un momento la respuesta por límite de velocidad. Aguardame unos segundos y volvé a probar."
+            reply_text = "¡Che, bancame unos 20 segundos! Google me frenó un toque por enviar mensajes muy seguidos. Volvé a probar en un momento."
 
         return {"response": reply_text, "reply": reply_text}
 
     except Exception as e:
         traceback.print_exc()
-        return {"response": "Tuve un contratiempo. Reintentá en un ratito.", "reply": "Tuve un contratiempo. Reintentá en un ratito."}
+        return {"response": "Tuve un contratiempo temporal. Reintentá en un ratito.", "reply": "Tuve un contratiempo temporal. Reintentá en un ratito."}
 
 if __name__ == "__main__":
     import uvicorn
