@@ -27,15 +27,14 @@ async def serve_index():
 async def chat_endpoint(request: Request):
     try:
         if not GEMINI_API_KEY:
-            return {"response": "Falta la GEMINI_API_KEY en Render.", "reply": "Falta la GEMINI_API_KEY en Render."}
+            return {"response": "Falta GEMINI_API_KEY en Render.", "reply": "Falta GEMINI_API_KEY en Render."}
 
         data = await request.json()
         user_text = data.get("message") or data.get("prompt") or data.get("text") or ""
         
         if not user_text:
-            return {"response": "No recibí ningún texto.", "reply": "No recibí ningún texto."}
+            return {"response": "No recibí texto.", "reply": "No recibí texto."}
 
-        # Conexión directa a la API v1beta con gemini-2.0-flash
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         
         payload = {
@@ -55,14 +54,12 @@ async def chat_endpoint(request: Request):
             reply_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
             return {"response": reply_text, "reply": reply_text}
         else:
-            print("--- ERROR GOOGLE API ---", res_data)
-            error_msg = res_data.get("error", {}).get("message", "Error al procesar con Gemini")
-            return {"response": f"Error ({response.status_code}): {error_msg}", "reply": f"Error: {error_msg}"}
+            error_msg = res_data.get("error", {}).get("message", "Error al procesar")
+            return {"response": f"Error: {error_msg}", "reply": f"Error: {error_msg}"}
 
     except Exception as e:
-        print("--- ERROR EN CHAT ENDPOINT ---")
         traceback.print_exc()
-        return {"response": f"Error de servidor: {str(e)}", "reply": f"Error de servidor: {str(e)}"}
+        return {"response": f"Error: {str(e)}", "reply": f"Error: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn
