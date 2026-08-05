@@ -509,14 +509,16 @@
         let recSeconds = 0;
 
         let sessions = JSON.parse(localStorage.getItem('nico_sessions') || '{}');
-        
-        let currentSessionId = 'session_' + Date.now();
-        sessions[currentSessionId] = {
-            title: "Nueva Charla",
-            messages: [{ sender: 'bot', text: '¡Buenas! Soy Nico IA. ¿En qué te doy una mano hoy?' }]
-        };
-        localStorage.setItem('nico_sessions', JSON.stringify(sessions));
-        localStorage.setItem('nico_current_session', currentSessionId);
+        let currentSessionId = localStorage.getItem('nico_current_session') || ('session_' + Date.now());
+
+        if (!sessions[currentSessionId]) {
+            sessions[currentSessionId] = {
+                title: "Nueva Charla",
+                messages: [{ sender: 'bot', text: '¡Buenas! Soy Nico IA. ¿En qué te doy una mano hoy?' }]
+            };
+            localStorage.setItem('nico_sessions', JSON.stringify(sessions));
+            localStorage.setItem('nico_current_session', currentSessionId);
+        }
 
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition((pos) => {
@@ -781,7 +783,6 @@
             audioPlayer.play().catch(e => console.error("Audio error:", e));
         }
 
-        // DESCARGA DE PDF VÍA PETICIÓN DE SERVIDOR
         async function triggerPdfDownloadFromServer(textContent) {
             try {
                 const res = await fetch('/api/download-pdf', {
@@ -814,7 +815,7 @@
             let message = inputField.value.trim();
             
             if (!message && !selectedBase64Image && !selectedBase64Video && !selectedFileB64) return;
-            
+
             if (!message && selectedFileB64) {
                 message = `Hacé un resumen del archivo ${selectedFilename} y preparalo en PDF.`;
             }
@@ -834,6 +835,7 @@
             if (selectedBase64Image) userMsgObj.image = selectedBase64Image;
             if (selectedBase64Video) userMsgObj.video = selectedBase64Video;
 
+            // DIBUJAR MENSAJE EN PANTALLA Y GUARDAR EN SESION
             activeSession.messages.push(userMsgObj);
 
             if (activeSession.title === "Nueva Charla") {
@@ -857,6 +859,7 @@
             const loadingDiv = appendMessageToUI('Pensando...', 'bot-message');
 
             try {
+                // SINCRO CLAVE: Le enviamos TODO el historial guardado de la sesión activa
                 const historyPayload = activeSession.messages.map(m => ({
                     role: m.sender === 'user' ? 'user' : 'assistant',
                     content: m.text
