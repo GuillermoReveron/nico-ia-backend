@@ -192,10 +192,17 @@ async def chat_endpoint(request: Request):
         now_arg = datetime.now(tz_arg)
         current_time_str = now_arg.strftime("%H:%M hs del %d/%m/%Y")
 
-        # 1. CORTESÍAS
-        clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
+        # 1. FRENO DE MANO PARA AFIRMACIONES / CORTESÍAS / AFIRMACIONES CORTAS
+        clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "").replace("¿", "").replace("?", "")
+        
+        polite_affirmatives = ["si", "si es correcto", "es correcto", "si gracias", "si es correcto gracias", "correcto", "asi es", "tal cual", "de una"]
         polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
         
+        if clean_user in polite_affirmatives:
+            reply_text = "¡Excelente! Dejo guardado ese dato. ¿En qué más te ayudo?"
+            audio_base64 = await generate_voice_male(reply_text)
+            return {"response": reply_text, "reply": reply_text, "audio": audio_base64}
+
         if clean_user in polite_negatives:
             reply_text = "¡De nada! Cualquier otra cosa que necesites, decime."
             audio_base64 = await generate_voice_male(reply_text)
@@ -228,7 +235,7 @@ async def chat_endpoint(request: Request):
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. CLIMA O INFORMACIÓN WEB
+        # 4. CLIMA O INFORMACIÓN WEB (SOLO SI SE SOLICITA NOMBRAMENTE)
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
@@ -238,7 +245,11 @@ async def chat_endpoint(request: Request):
             if exact_weather:
                 context_web = f"\n\n{exact_weather}\n"
 
-        if not context_web and tavily_client and len(user_text.strip()) > 3:
+        # Búsqueda web general solo si la pregunta tiene sustento real y no es afirmación corta
+        explicit_search_triggers = ["noticias", "dólar", "dolar", "quien es", "que paso", "resultado", "buscar"]
+        should_search_web = any(w in user_text.lower() for w in explicit_search_triggers)
+
+        if not context_web and should_search_web and tavily_client and len(user_text.strip()) > 5:
             try:
                 search_query = f"{user_text} 2026"
                 search_result = tavily_client.search(query=search_query, max_results=1, search_depth="basic")
@@ -250,24 +261,23 @@ async def chat_endpoint(request: Request):
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
 
-        # 5. MODELO PRINCIPAL (Llama 3.3 70B)
+        # 5. MODELO PRINCIPAL (Llama 3.3 70B) CON REGLAS ESTRICTAS
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"La fecha y hora exacta actual en Argentina es: {current_time_str}. "
-            "REGLA DE ORO DE MEMORIA: Leé el historial de conversación adjunto. "
-            "Debes recordar los datos personales mencionados (como nombres de personas, hijos, familiares o lugares) y responder con coherencia y precisión a lo que te pregunten sobre ellos. "
-            "NUNCA inventes acertijos, adivinanzas ni hables de familiares que el usuario no mencionó. "
-            "Si en el prompt recibís datos del clima, responde con los datos exactos obtenidos de la web. "
-            "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar. NO usás la palabra 'che'."
+            "REGLA DE ORO DE RESPUESTA: Respondé SOLAMENTE a lo que el usuario te está consultando. "
+            "NUNCA des explicaciones gramaticales, reglas ortográficas, datos del año 2026 ni promociones turísticas si el usuario no te las pidió explícitamente. "
+            "Debes recordar los datos personales mencionados en el historial (nombres, familiares, preferencias) de forma coherente. "
+            "Si en el prompt recibís datos del clima, responde con la información meteorológica exacta. "
+            "Si pide PDF o resumen, confirmale que se lo dejaste listo para descargar con el botón inferior. NO usás la palabra 'che'."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
         
-        # FILTRO DE SEGURIDAD DEL HISTORIAL: Limpia caracteres y asegura estructura pura de chat
+        # Filtro de seguridad del historial
         for msg in history_from_client:
             role = msg.get("role") or ("user" if msg.get("sender") == "user" else "assistant")
             content = msg.get("content") or msg.get("text") or ""
-            # Omitimos avisos de sistema o imágenes en texto para no marear a la IA
             if content and not content.startswith("📷") and not content.startswith("🎥") and not content.startswith("📄"):
                 messages_payload.append({"role": role, "content": content})
 
