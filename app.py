@@ -254,19 +254,22 @@ async def chat_endpoint(request: Request):
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"La fecha y hora exacta actual en Argentina es: {current_time_str}. "
-            "REGLA CRÍTICA DE MEMORIA: Leé ATENTAMENTE TODO el historial de la conversación desde el primer mensaje hasta el último. "
-            "Debes recordar y tener siempre presentes todos los datos personales mencionados en el historial (por ejemplo, nombres de usuario, familiares como hijos, preferencias, etc.) sin importar cuántos mensajes hayan pasado. "
-            "Si en el prompt recibís datos del clima de una ciudad, responde con los datos meteorológicos exactos de los resultados web. "
-            "Respondé ÚNICAMENTE sobre la ciudad consultada. "
-            "Si el usuario te pide un resumen de un documento o texto, explicáselo detalladamente en puntos clave. "
-            "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar con el botón inferior. NO usás la palabra 'che'."
+            "REGLA DE ORO DE MEMORIA: Leé el historial de conversación adjunto. "
+            "Debes recordar los datos personales mencionados (como nombres de personas, hijos, familiares o lugares) y responder con coherencia y precisión a lo que te pregunten sobre ellos. "
+            "NUNCA inventes acertijos, adivinanzas ni hables de familiares que el usuario no mencionó. "
+            "Si en el prompt recibís datos del clima, responde con los datos exactos obtenidos de la web. "
+            "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar. NO usás la palabra 'che'."
         )
 
         messages_payload = [{"role": "system", "content": system_prompt}]
         
-        # SIN LÍMITE: Enviamos la totalidad del historial recibido de la sesión actual
+        # FILTRO DE SEGURIDAD DEL HISTORIAL: Limpia caracteres y asegura estructura pura de chat
         for msg in history_from_client:
-            messages_payload.append(msg)
+            role = msg.get("role") or ("user" if msg.get("sender") == "user" else "assistant")
+            content = msg.get("content") or msg.get("text") or ""
+            # Omitimos avisos de sistema o imágenes en texto para no marear a la IA
+            if content and not content.startswith("📷") and not content.startswith("🎥") and not content.startswith("📄"):
+                messages_payload.append({"role": role, "content": content})
 
         user_content = user_text
         if document_context:
@@ -282,8 +285,8 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 600,
-            "temperature": 0.3
+            "max_tokens": 500,
+            "temperature": 0.2
         }
         headers = {
             "Authorization": f"Bearer {GROQ_API_KEY.strip()}",
