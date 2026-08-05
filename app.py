@@ -8,7 +8,7 @@ import asyncio
 import re
 import random
 from datetime import datetime
-import zoneinfo  # Para obtener la hora exacta de Argentina
+import zoneinfo
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -100,7 +100,6 @@ def get_weather_exact(user_text: str, default_location: str) -> str:
         match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
         city_query = match.group(1).strip().replace("?", "").replace("¿", "").replace(".", "") if match else default_location.split(",")[0]
 
-        # Detectar si pregunta por hoy/actual o por mañana
         time_target = "actual hoy ahora" if any(w in user_text.lower() for w in ["actual", "ahora", "hoy", "momento"]) else "mañana pronostico"
 
         if tavily_client:
@@ -255,7 +254,9 @@ async def chat_endpoint(request: Request):
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
             f"La fecha y hora exacta actual en Argentina es: {current_time_str}. "
-            "Mantené la lógica estricta del diálogo. Si en el prompt recibís los datos del clima de una ciudad, responde con los datos meteorológicos exactos que leíste de los resultados de la web. "
+            "REGLA CRÍTICA DE MEMORIA: Leé ATENTAMENTE TODO el historial de la conversación desde el primer mensaje hasta el último. "
+            "Debes recordar y tener siempre presentes todos los datos personales mencionados en el historial (por ejemplo, nombres de usuario, familiares como hijos, preferencias, etc.) sin importar cuántos mensajes hayan pasado. "
+            "Si en el prompt recibís datos del clima de una ciudad, responde con los datos meteorológicos exactos de los resultados web. "
             "Respondé ÚNICAMENTE sobre la ciudad consultada. "
             "Si el usuario te pide un resumen de un documento o texto, explicáselo detalladamente en puntos clave. "
             "Si pide PDF o resumen de estudio, confirmale que se lo dejaste listo para descargar con el botón inferior. NO usás la palabra 'che'."
@@ -263,7 +264,8 @@ async def chat_endpoint(request: Request):
 
         messages_payload = [{"role": "system", "content": system_prompt}]
         
-        for msg in history_from_client[-6:]:
+        # SIN LÍMITE: Enviamos la totalidad del historial recibido de la sesión actual
+        for msg in history_from_client:
             messages_payload.append(msg)
 
         user_content = user_text
@@ -280,7 +282,7 @@ async def chat_endpoint(request: Request):
         payload = {
             "model": "llama-3.3-70b-versatile",
             "messages": messages_payload,
-            "max_tokens": 500,
+            "max_tokens": 600,
             "temperature": 0.3
         }
         headers = {
@@ -288,7 +290,7 @@ async def chat_endpoint(request: Request):
             "Content-Type": "application/json"
         }
 
-        response = requests.post(url, json=payload, headers=headers, timeout=12)
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
         
         if response.status_code == 200:
             res_json = response.json()
