@@ -7,6 +7,8 @@ import traceback
 import asyncio
 import re
 import random
+from datetime import datetime
+import zoneinfo  # Para obtener la hora exacta de Argentina
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -92,14 +94,17 @@ def extract_text_from_file_b64(file_b64: str, filename: str) -> str:
         traceback.print_exc()
         return ""
 
-# BÚSQUEDA METEOROLÓGICA CON CONTROL DE ERRORES EN TIEMPO REAL VÍA TAVILY
+# BÚSQUEDA METEOROLÓGICA INTELIGENTE EN TIEMPO REAL VÍA TAVILY
 def get_weather_exact(user_text: str, default_location: str) -> str:
     try:
         match = re.search(r'\b(?:en|de|para)\s+(.+)', user_text, re.IGNORECASE)
         city_query = match.group(1).strip().replace("?", "").replace("¿", "").replace(".", "") if match else default_location.split(",")[0]
 
+        # Detectar si pregunta por hoy/actual o por mañana
+        time_target = "actual hoy ahora" if any(w in user_text.lower() for w in ["actual", "ahora", "hoy", "momento"]) else "mañana pronostico"
+
         if tavily_client:
-            search_query = f"clima pronostico temperatura mañana {city_query} Servicio Meteorologico Nacional Argentina"
+            search_query = f"clima temperatura {time_target} {city_query} Servicio Meteorologico Nacional Argentina"
             search_result = tavily_client.search(query=search_query, max_results=2, search_depth="basic")
             results = search_result.get("results", [])
             
@@ -183,7 +188,12 @@ async def chat_endpoint(request: Request):
         if not user_text and not user_image_b64 and not file_b64:
             return {"response": "No recibí ningún texto o archivo.", "reply": "No recibí ningún texto o archivo."}
 
-        # 1. FRENO DE MANO PARA CORTESÍAS
+        # HORA ACTUAL ARGENTINA
+        tz_arg = zoneinfo.ZoneInfo("America/Argentina/Buenos_Aires")
+        now_arg = datetime.now(tz_arg)
+        current_time_str = now_arg.strftime("%H:%M hs del %d/%m/%Y")
+
+        # 1. CORTESÍAS
         clean_user = user_text.lower().strip().replace(".", "").replace(",", "").replace("!", "")
         polite_negatives = ["no", "no gracias", "no no gracias", "gracias", "listo", "chau", "nada mas", "no nada mas", "gracias nico"]
         
@@ -219,7 +229,7 @@ async def chat_endpoint(request: Request):
             if extracted:
                 document_context = f"\n\nCONTENIDO EXTRAÍDO DEL DOCUMENTO ({filename}):\n{extracted[:6000]}"
 
-        # 4. BÚSQUEDA DE CLIMA O INFORMACIÓN WEB
+        # 4. CLIMA O INFORMACIÓN WEB
         context_web = ""
         weather_triggers = ["clima", "temperatura", "tiempo", "grados", "llueve", "lluvia", "pronóstico", "pronostico", "mañana", "hoy"]
         is_weather = any(w in user_text.lower() for w in weather_triggers)
@@ -235,16 +245,16 @@ async def chat_endpoint(request: Request):
                 search_result = tavily_client.search(query=search_query, max_results=1, search_depth="basic")
                 results = search_result.get("results", [])
                 if results:
-                    context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DE LA WEB (AÑO 2026):\n"
+                    context_web = f"\n\nINFORMACIÓN EN TIEMPO REAL DE LA WEB:\n"
                     for res in results:
                         context_web += f"- {res.get('title', '')}: {res.get('content', '')}\n"
             except Exception as e:
                 print("Aviso búsqueda Tavily:", e)
 
-        # 5. MODELO PRINCIPAL (Llama 3.3)
+        # 5. MODELO PRINCIPAL (Llama 3.3 70B)
         system_prompt = (
             f"Sos Nico IA, un asistente virtual argentino joven (18 años), simpático, ágil y educado. "
-            "Estamos en el año 2026. "
+            f"La fecha y hora exacta actual en Argentina es: {current_time_str}. "
             "Mantené la lógica estricta del diálogo. Si en el prompt recibís los datos del clima de una ciudad, responde con los datos meteorológicos exactos que leíste de los resultados de la web. "
             "Respondé ÚNICAMENTE sobre la ciudad consultada. "
             "Si el usuario te pide un resumen de un documento o texto, explicáselo detalladamente en puntos clave. "
@@ -299,7 +309,7 @@ async def chat_endpoint(request: Request):
             }
         else:
             print("Error respuesta Groq:", response.status_code, response.text)
-            return {"response": "No pude procesar la consulta en este momento.", "reply": "No pude procesar la consulta en este momento."}
+            return {"response": "Superé el límite de consultas por este momento. Probá en un ratito.", "reply": "Superé el límite de consultas por este momento. Probá en un ratito."}
 
     except Exception as e:
         traceback.print_exc()
